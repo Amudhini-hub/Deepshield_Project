@@ -9,10 +9,14 @@ from typing import Dict, Any
 
 load_dotenv()
 
+# Check runtime environment first, then .env file
+USE_SQLITE_RUNTIME = os.environ.get("USE_SQLITE", "True").lower() == "true"  # Default to True for development
+
 
 class Config:
     """Base configuration class"""
-    
+    USE_SQLITE_RUNTIME = os.environ.get("USE_SQLITE", "True").lower() == "true"
+
     # Application settings
     APP_NAME = "Deepshield"
     APP_VERSION = "1.0.0"
@@ -65,18 +69,23 @@ class Config:
     REPLAY_ATTACK_THRESHOLD = 0.75
     
     # Database settings
-    DB_USER = os.getenv("DB_USER", "deepshield")
-    DB_PASSWORD = os.getenv("DB_PASSWORD", "deepshield_password")
-    DB_HOST = os.getenv("DB_HOST", "localhost")
-    DB_PORT = os.getenv("DB_PORT", "5432")
-    DB_NAME = os.getenv("DB_NAME", "deepshield")
-    
-    # Build DATABASE_URL from components if not provided
-    _custom_db_url = os.getenv("DATABASE_URL")
-    if _custom_db_url:
-        DATABASE_URL = _custom_db_url
+    if USE_SQLITE_RUNTIME:
+        # SQLite for development/testing (runtime override)
+        DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./deepshield.db")
     else:
-        DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+        # PostgreSQL for production
+        DB_USER = os.getenv("DB_USER", "deepshield")
+        DB_PASSWORD = os.getenv("DB_PASSWORD", "deepshield_password")
+        DB_HOST = os.getenv("DB_HOST", "localhost")
+        DB_PORT = os.getenv("DB_PORT", "5432")
+        DB_NAME = os.getenv("DB_NAME", "deepshield")
+        
+        # Build DATABASE_URL from components if not provided
+        _custom_db_url = os.getenv("DATABASE_URL")
+        if _custom_db_url:
+            DATABASE_URL = _custom_db_url
+        else:
+            DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
     
     DATABASE_POOL_SIZE = int(os.getenv("DATABASE_POOL_SIZE", "20"))
     DATABASE_MAX_OVERFLOW = int(os.getenv("DATABASE_MAX_OVERFLOW", "40"))

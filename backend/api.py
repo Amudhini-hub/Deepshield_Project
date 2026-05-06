@@ -36,7 +36,7 @@ from backend.services.authentication import (
 )
 from backend.services.behavioral_biometrics import BehavioralBiometricsEngine
 from backend.services.risk_assessment import RiskAssessmentEngine
-from backend.storage import store
+from backend.database_storage import db_store
 from backend.crud import rebuild_behavioral_profile
 
 # ML services - optional
@@ -89,7 +89,7 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
             detail="Invalid authentication credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    user = store.get_user_by_id(int(user_id))
+    user = db_store.get_user_by_id(int(user_id))
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -105,13 +105,13 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
     status_code=status.HTTP_201_CREATED,
 )
 async def register_user(payload: UserCreateRequest) -> UserResponse:
-    existing = store.get_user_by_email(payload.email)
+    existing = db_store.get_user_by_email(payload.email)
     if existing:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email already registered",
         )
-    user = store.create_user(payload.email, get_password_hash(payload.password))
+    user = db_store.create_user(payload.email, get_password_hash(payload.password))
     return UserResponse(
         id=user.id,
         email=user.email,
@@ -126,7 +126,7 @@ async def register_user(payload: UserCreateRequest) -> UserResponse:
     status_code=status.HTTP_200_OK,
 )
 async def login_user(form_data: OAuth2PasswordRequestForm = Depends()) -> TokenResponse:
-    user = store.get_user_by_email(form_data.username)
+    user = db_store.get_user_by_email(form_data.username)
     if user is None or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -168,7 +168,7 @@ async def refresh_access_token(payload: RefreshTokenRequest) -> TokenResponse:
             detail="Invalid token payload",
         )
     
-    user = store.get_user_by_id(int(user_id))
+    user = db_store.get_user_by_id(int(user_id))
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -221,7 +221,7 @@ async def create_baseline(
     )
     profile_data = profile.__dict__.copy()
     profile_data["created_at"] = profile.created_at.isoformat()
-    store.save_biometric_profile(payload.user_id, profile_data)
+    db_store.save_biometric_profile(payload.user_id, profile_data)
 
     return BehavioralProfileResponse(
         user_id=profile.user_id,
@@ -252,7 +252,7 @@ async def analyze_behavior(
             detail="Authenticated user mismatch",
         )
 
-    profile_data = store.get_biometric_profile(payload.user_id)
+    profile_data = db_store.get_biometric_profile(payload.user_id)
     if profile_data:
         baseline = rebuild_behavioral_profile(profile_data)
         biometric_engine.profiles[payload.user_id] = baseline
