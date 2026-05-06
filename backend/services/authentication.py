@@ -8,20 +8,51 @@ from backend.config.config import get_config
 
 config = get_config()
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Use argon2 as primary with bcrypt as fallback for better compatibility
+try:
+    pwd_context = CryptContext(
+        schemes=["argon2", "bcrypt"],
+        deprecated="auto",
+        argon2__time_cost=2,
+        argon2__memory_cost=65536,
+        argon2__parallelism=4,
+    )
+except Exception:
+    # Fallback to bcrypt only if argon2 fails
+    pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 TOKEN_TYPE_ACCESS = "access"
 TOKEN_TYPE_REFRESH = "refresh"
 
 
 def get_password_hash(password: str) -> str:
-    """Hash password using bcrypt"""
-    return pwd_context.hash(password)
+    """Hash password using argon2/bcrypt"""
+    try:
+        return pwd_context.hash(password)
+    except Exception as e:
+        # Fallback implementation if hashing fails
+        import hashlib
+        import os
+        salt = os.urandom(32)
+        key = hashlib.pbkdf2_hmac('sha256', password.encode(), salt, 100000)
+        return f"pbkdf2:{salt.hex()}:{key.hex()}"
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify password against hash"""
-    return pwd_context.verify(plain_password, hashed_password)
+    try:
+        return pwd_context.verify(plain_password, hashed_password)
+    except Exception:
+        # Fallback for pbkdf2 hashes
+        if hashed_password.startswith("pbkdf2:"):
+            import hashlib
+            parts = hashed_password.split(":")
+            if len(parts) == 3:
+                salt = bytes.fromhex(parts[1])
+                stored_key = parts[2]
+                key = hashlib.pbkdf2_hmac('sha256', plain_password.encode(), salt, 100000)
+                return key.hex() == stored_key
+        return False
 
 
 def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
@@ -60,4 +91,3 @@ def decode_refresh_token(token: str) -> Optional[Dict]:
         return payload
     except JWTError:
         return None
-
