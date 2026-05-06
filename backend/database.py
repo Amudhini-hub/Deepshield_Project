@@ -15,7 +15,7 @@ engine = create_engine(
     max_overflow=config.DATABASE_MAX_OVERFLOW,
     pool_pre_ping=True,           # Verify connections are valid
     pool_recycle=3600,            # Recycle connections after 1 hour
-    connect_args={"connect_timeout": 10}
+    connect_args={"check_same_thread": False} if config.DATABASE_URL.startswith("sqlite") else {"connect_timeout": 10}
 )
 
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False, class_=Session)
