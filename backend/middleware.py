@@ -24,30 +24,48 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         
         start_time = time.time()
         
-        # Log request
-        logger.info(f"Request started", extra={
-            "request_id": request_id,
-            "method": request.method,
-            "path": request.url.path,
-            "query_params": dict(request.query_params),
-            "client": request.client.host if request.client else "unknown",
-        })
+        # Skip detailed logging for health checks
+        is_health_check = request.url.path in ["/health", "/"]
+        
+        if not is_health_check:
+            # Log request
+            logger.info(f"Request started", extra={
+                "request_id": request_id,
+                "method": request.method,
+                "path": request.url.path,
+                "query_params": dict(request.query_params),
+                "client": request.client.host if request.client else "unknown",
+            })
         
         try:
             response = await call_next(request)
         except Exception as exc:
-            logger.error(f"Request failed with exception", extra={
-                "request_id": request_id,
-                "method": request.method,
-                "path": request.url.path,
-                "error": str(exc),
-            }, exc_info=True)
+            if not is_health_check:
+                logger.error(f"Request failed with exception", extra={
+                    "request_id": request_id,
+                    "method": request.method,
+                    "path": request.url.path,
+                    "error": str(exc),
+                }, exc_info=True)
             raise
         
         process_time = time.time() - start_time
         
-        # Log response
-        logger.info(f"Request completed", extra={
+        if not is_health_check:
+            # Log response
+            logger.info(f"Request completed", extra={
+                "request_id": request_id,
+                "method": request.method,
+                "path": request.url.path,
+                "status_code": response.status_code,
+                "duration_ms": round(process_time * 1000, 2),
+            })
+        
+        # Add request ID to response headers
+        response.headers["x-request-id"] = request_id
+        response.headers["x-process-time"] = f"{process_time:.6f}"
+        
+        return response
             "request_id": request_id,
             "method": request.method,
             "path": request.url.path,
