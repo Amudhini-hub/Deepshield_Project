@@ -49,7 +49,13 @@ class UserResponse(BaseModel):
 
 class TokenResponse(BaseModel):
     access_token: str
-    token_type: str
+    refresh_token: str
+    token_type: str = "bearer"
+    expires_in: int  # seconds until token expires
+
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
 
 
 class BehavioralProfileResponse(BaseModel):
@@ -85,3 +91,4 @@ class RiskAssessmentResponse(BaseModel):
     additional_verification_needed: bool
     recommended_action: str
     timestamp: str
+

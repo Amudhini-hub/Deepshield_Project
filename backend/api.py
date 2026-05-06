@@ -1,11 +1,17 @@
 import logging
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-import cv2
-import numpy as np
+from datetime import timedelta
+
+try:
+    import cv2
+    import numpy as np
+    CV2_AVAILABLE = True
+except ImportError:
+    CV2_AVAILABLE = False
 
 from backend.config.config import get_config
 from backend.schemas import (
@@ -16,29 +22,52 @@ from backend.schemas import (
     RiskAssessmentRequest,
     RiskAssessmentResponse,
     TokenResponse,
+    RefreshTokenRequest,
     UserCreateRequest,
     UserResponse,
 )
 from backend.services.authentication import (
     create_access_token,
+    create_refresh_token,
     decode_access_token,
+    decode_refresh_token,
     verify_password,
     get_password_hash,
 )
 from backend.services.behavioral_biometrics import BehavioralBiometricsEngine
 from backend.services.risk_assessment import RiskAssessmentEngine
-from backend.services.deepfake_detection import DeepfakeDetector
-from backend.services.liveness_detection import LivenessDetector
 from backend.storage import store
 from backend.crud import rebuild_behavioral_profile
+
+# ML services - optional
+try:
+    from backend.services.deepfake_detection import DeepfakeDetector
+    from backend.services.liveness_detection import LivenessDetector
+    ML_AVAILABLE = True
+except (ImportError, Exception):
+    ML_AVAILABLE = False
+    DeepfakeDetector = None
+    LivenessDetector = None
 
 logger = logging.getLogger(__name__)
 
 config = get_config()
 biometric_engine = BehavioralBiometricsEngine(config=config.get_config_dict())
 risk_engine = RiskAssessmentEngine(config=config.get_config_dict())
-deepfake_detector = DeepfakeDetector(config=config.get_config_dict())
-liveness_detector = LivenessDetector(config=config.get_config_dict())
+
+# Initialize ML services only if available
+if ML_AVAILABLE:
+    try:
+        deepfake_detector = DeepfakeDetector(config=config.get_config_dict())
+        liveness_detector = LivenessDetector(config=config.get_config_dict())
+    except Exception as e:
+        logger.warning(f"Could not initialize ML services: {e}")
+        ML_AVAILABLE = False
+        deepfake_detector = None
+        liveness_detector = None
+else:
+    deepfake_detector = None
+    liveness_detector = None
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/users/login")
 
@@ -47,6 +76,12 @@ api_router = APIRouter(tags=["deepshield"])
 
 def get_current_user(token: str = Depends(oauth2_scheme)):
     payload = decode_access_token(token)
+    if payload is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     user_id = payload.get("sub")
     if not user_id:
         raise HTTPException(
@@ -98,8 +133,58 @@ async def login_user(form_data: OAuth2PasswordRequestForm = Depends()) -> TokenR
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    
+    config = get_config()
     access_token = create_access_token({"sub": str(user.id)})
-    return TokenResponse(access_token=access_token, token_type="bearer")
+    refresh_token = create_refresh_token({"sub": str(user.id)})
+    
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        token_type="bearer",
+        expires_in=config.JWT_EXPIRATION_HOURS * 3600
+    )
+
+
+@api_router.post(
+    "/users/refresh",
+    response_model=TokenResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def refresh_access_token(payload: RefreshTokenRequest) -> TokenResponse:
+    """Get new access token using refresh token"""
+    decoded = decode_refresh_token(payload.refresh_token)
+    if decoded is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired refresh token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    user_id = decoded.get("sub")
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token payload",
+        )
+    
+    user = store.get_user_by_id(int(user_id))
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+        )
+    
+    config = get_config()
+    access_token = create_access_token({"sub": str(user.id)})
+    refresh_token = create_refresh_token({"sub": str(user.id)})
+    
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        token_type="bearer",
+        expires_in=config.JWT_EXPIRATION_HOURS * 3600
+    )
 
 
 @api_router.get(
@@ -220,6 +305,12 @@ async def detect_deepfake(
     current_user=Depends(get_current_user)
 ) -> dict:
     """Detect deepfakes in uploaded video"""
+    if not CV2_AVAILABLE:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Deepfake detection service not available (OpenCV not installed)"
+        )
+    
     try:
         # Read video file
         video_data = await file.read()
@@ -281,6 +372,12 @@ async def detect_liveness(
     current_user=Depends(get_current_user)
 ) -> dict:
     """Detect liveness in uploaded video"""
+    if not CV2_AVAILABLE:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Liveness detection service not available (OpenCV not installed)"
+        )
+    
     try:
         # Read video file
         video_data = await file.read()

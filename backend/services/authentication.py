@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from typing import Dict, Optional
 
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -9,25 +10,54 @@ config = get_config()
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+TOKEN_TYPE_ACCESS = "access"
+TOKEN_TYPE_REFRESH = "refresh"
+
 
 def get_password_hash(password: str) -> str:
+    """Hash password using bcrypt"""
     return pwd_context.hash(password)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Verify password against hash"""
     return pwd_context.verify(plain_password, hashed_password)
 
 
 def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
+    """Create JWT access token"""
     to_encode = data.copy()
     expire = datetime.utcnow() + (expires_delta or timedelta(hours=config.JWT_EXPIRATION_HOURS))
-    to_encode.update({"exp": expire, "sub": data.get("sub")})
+    to_encode.update({"exp": expire, "type": TOKEN_TYPE_ACCESS})
     return jwt.encode(to_encode, config.SECRET_KEY, algorithm=config.JWT_ALGORITHM)
 
 
-def decode_access_token(token: str) -> dict:
+def create_refresh_token(data: dict, expires_delta: timedelta | None = None) -> str:
+    """Create JWT refresh token"""
+    to_encode = data.copy()
+    expire = datetime.utcnow() + (expires_delta or timedelta(days=config.REFRESH_TOKEN_EXPIRATION_DAYS))
+    to_encode.update({"exp": expire, "type": TOKEN_TYPE_REFRESH})
+    return jwt.encode(to_encode, config.SECRET_KEY, algorithm=config.JWT_ALGORITHM)
+
+
+def decode_access_token(token: str) -> Optional[Dict]:
+    """Decode and validate JWT access token"""
     try:
         payload = jwt.decode(token, config.SECRET_KEY, algorithms=[config.JWT_ALGORITHM])
+        if payload.get("type") != TOKEN_TYPE_ACCESS:
+            return None
         return payload
     except JWTError:
-        return {}
+        return None
+
+
+def decode_refresh_token(token: str) -> Optional[Dict]:
+    """Decode and validate JWT refresh token"""
+    try:
+        payload = jwt.decode(token, config.SECRET_KEY, algorithms=[config.JWT_ALGORITHM])
+        if payload.get("type") != TOKEN_TYPE_REFRESH:
+            return None
+        return payload
+    except JWTError:
+        return None
+
