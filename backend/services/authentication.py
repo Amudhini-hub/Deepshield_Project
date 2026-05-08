@@ -59,7 +59,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
                 return key.hex() == stored_key
         return False
 
-
+from typing import Optional
 def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
     """Create JWT access token"""
     to_encode = data.copy()
