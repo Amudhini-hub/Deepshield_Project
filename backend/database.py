@@ -1,6 +1,7 @@
+import logging
+
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, declarative_base, sessionmaker
-import logging
 
 from backend.config.config import get_config
 
@@ -69,7 +70,7 @@ def drop_db() -> bool:
     logger.warning("Dropping all database tables...")
     try:
         from backend.models import Base as ModelsBase
-        
+
         ModelsBase.metadata.drop_all(bind=engine)
         logger.info("Database tables dropped")
         return True

@@ -1,20 +1,20 @@
-import pytest
 import os
+
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+from backend.api import get_db
 from backend.database import Base
 from backend.main import app
-from backend.api import get_db
 
 # Use file-based SQLite database that matches conftest setup
 # This ensures conftest can create tables and tests can access them
 SQLALCHEMY_DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./test.db")
 
 engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
-    connect_args={"check_same_thread": False}
+    SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
 )
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -124,7 +124,10 @@ class TestBiometricEndpoints:
         )
         resp = client.post(
             "/api/v1/users/login",
-            data={"username": "biometric@example.com", "password": "SecurePassword123!"},
+            data={
+                "username": "biometric@example.com",
+                "password": "SecurePassword123!",
+            },
         )
         token = resp.json().get("access_token")
         user_resp = client.get(

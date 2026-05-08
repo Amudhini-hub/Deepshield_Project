@@ -1,28 +1,29 @@
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from datetime import timedelta
 
 try:
     import cv2
     import numpy as np
+
     CV2_AVAILABLE = True
 except ImportError:
     CV2_AVAILABLE = False
 
 from backend.config.config import get_config
+from backend.crud import rebuild_behavioral_profile
 from backend.schemas import (
     BaselineCreateRequest,
     BehavioralAnalysisRequest,
     BehavioralAnalysisResponse,
     BehavioralProfileResponse,
+    RefreshTokenRequest,
     RiskAssessmentRequest,
     RiskAssessmentResponse,
     TokenResponse,
-    RefreshTokenRequest,
     UserCreateRequest,
     UserResponse,
 )
@@ -31,18 +32,18 @@ from backend.services.authentication import (
     create_refresh_token,
     decode_access_token,
     decode_refresh_token,
-    verify_password,
     get_password_hash,
+    verify_password,
 )
 from backend.services.behavioral_biometrics import BehavioralBiometricsEngine
 from backend.services.risk_assessment import RiskAssessmentEngine
 from backend.storage import store
-from backend.crud import rebuild_behavioral_profile
 
 # ML services - optional
 try:
     from backend.services.deepfake_detection import DeepfakeDetector
     from backend.services.liveness_detection import LivenessDetector
+
     ML_AVAILABLE = True
 except (ImportError, Exception):
     ML_AVAILABLE = False
@@ -133,16 +134,16 @@ async def login_user(form_data: OAuth2PasswordRequestForm = Depends()) -> TokenR
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     config = get_config()
     access_token = create_access_token({"sub": str(user.id)})
     refresh_token = create_refresh_token({"sub": str(user.id)})
-    
+
     return TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,
         token_type="bearer",
-        expires_in=config.JWT_EXPIRATION_HOURS * 3600
+        expires_in=config.JWT_EXPIRATION_HOURS * 3600,
     )
 
 
@@ -160,30 +161,30 @@ async def refresh_access_token(payload: RefreshTokenRequest) -> TokenResponse:
             detail="Invalid or expired refresh token",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     user_id = decoded.get("sub")
     if not user_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token payload",
         )
-    
+
     user = store.get_user_by_id(int(user_id))
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found",
         )
-    
+
     config = get_config()
     access_token = create_access_token({"sub": str(user.id)})
     refresh_token = create_refresh_token({"sub": str(user.id)})
-    
+
     return TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,
         token_type="bearer",
-        expires_in=config.JWT_EXPIRATION_HOURS * 3600
+        expires_in=config.JWT_EXPIRATION_HOURS * 3600,
     )
 
 
@@ -192,7 +193,9 @@ async def refresh_access_token(payload: RefreshTokenRequest) -> TokenResponse:
     response_model=UserResponse,
     status_code=status.HTTP_200_OK,
 )
-async def get_authenticated_user(current_user=Depends(get_current_user)) -> UserResponse:
+async def get_authenticated_user(
+    current_user=Depends(get_current_user),
+) -> UserResponse:
     return UserResponse(
         id=current_user.id,
         email=current_user.email,
@@ -301,29 +304,28 @@ async def assess_risk(payload: RiskAssessmentRequest) -> RiskAssessmentResponse:
 
 @api_router.post("/deepfake/detect", status_code=status.HTTP_200_OK)
 async def detect_deepfake(
-    file: UploadFile = File(...),
-    current_user=Depends(get_current_user)
+    file: UploadFile = File(...), current_user=Depends(get_current_user)
 ) -> dict:
     """Detect deepfakes in uploaded video"""
     if not CV2_AVAILABLE:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Deepfake detection service not available (OpenCV not installed)"
+            detail="Deepfake detection service not available (OpenCV not installed)",
         )
-    
+
     try:
         # Read video file
         video_data = await file.read()
         video_path = f"/tmp/{file.filename}"
-        
-        with open(video_path, 'wb') as f:
+
+        with open(video_path, "wb") as f:
             f.write(video_data)
-        
+
         # Extract frames from video
         cap = cv2.VideoCapture(video_path)
         frames = []
         frame_count = 0
-        
+
         while frame_count < 30:  # Limit to 30 frames for performance
             ret, frame = cap.read()
             if not ret:
@@ -332,22 +334,23 @@ async def detect_deepfake(
             frame = cv2.resize(frame, (640, 480))
             frames.append(frame)
             frame_count += 1
-        
+
         cap.release()
-        
+
         if not frames:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Could not extract frames from video"
+                detail="Could not extract frames from video",
             )
-        
+
         # Run deepfake detection
         result = deepfake_detector.detect_from_frames(frames)
-        
+
         # Clean up
         import os
+
         os.remove(video_path)
-        
+
         return {
             "user_id": current_user.id,
             "is_deepfake": result.is_deepfake,
@@ -355,42 +358,40 @@ async def detect_deepfake(
             "detection_method": result.detection_method,
             "details": result.details,
             "anomalies": result.anomalies,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.utcnow().isoformat(),
         }
-        
+
     except Exception as e:
         logger.error(f"Error in deepfake detection: {e}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
 
 
 @api_router.post("/liveness/detect", status_code=status.HTTP_200_OK)
 async def detect_liveness(
-    file: UploadFile = File(...),
-    current_user=Depends(get_current_user)
+    file: UploadFile = File(...), current_user=Depends(get_current_user)
 ) -> dict:
     """Detect liveness in uploaded video"""
     if not CV2_AVAILABLE:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Liveness detection service not available (OpenCV not installed)"
+            detail="Liveness detection service not available (OpenCV not installed)",
         )
-    
+
     try:
         # Read video file
         video_data = await file.read()
         video_path = f"/tmp/{file.filename}"
-        
-        with open(video_path, 'wb') as f:
+
+        with open(video_path, "wb") as f:
             f.write(video_data)
-        
+
         # Extract frames from video
         cap = cv2.VideoCapture(video_path)
         frames = []
         frame_count = 0
-        
+
         while frame_count < 60:  # Limit to 60 frames for liveness
             ret, frame = cap.read()
             if not ret:
@@ -399,22 +400,23 @@ async def detect_liveness(
             frame = cv2.resize(frame, (640, 480))
             frames.append(frame)
             frame_count += 1
-        
+
         cap.release()
-        
+
         if not frames:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Could not extract frames from video"
+                detail="Could not extract frames from video",
             )
-        
+
         # Run liveness detection
         result = liveness_detector.detect_from_video_frames(frames)
-        
+
         # Clean up
         import os
+
         os.remove(video_path)
-        
+
         return {
             "user_id": current_user.id,
             "is_alive": result.is_alive,
@@ -422,14 +424,13 @@ async def detect_liveness(
             "challenge_type": result.challenge_type,
             "details": result.details,
             "frame_count": result.frame_count,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.utcnow().isoformat(),
         }
-        
+
     except Exception as e:
         logger.error(f"Error in liveness detection: {e}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
 
 

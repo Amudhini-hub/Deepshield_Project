@@ -1,10 +1,11 @@
 """Database storage layer for Deepshield backend using SQLAlchemy"""
 
-from typing import Optional
 import logging
+from typing import Optional
 
 from backend.database import SessionLocal
-from backend.models import User as UserModel, BiometricProfile as BiometricProfileModel
+from backend.models import BiometricProfile as BiometricProfileModel
+from backend.models import User as UserModel
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +20,9 @@ class DatabaseStore:
         """Create a new user in the database"""
         db = self.SessionLocal()
         try:
-            user = UserModel(email=email, hashed_password=hashed_password, is_active=True)
+            user = UserModel(
+                email=email, hashed_password=hashed_password, is_active=True
+            )
             db.add(user)
             db.commit()
             db.refresh(user)
@@ -50,20 +53,26 @@ class DatabaseStore:
         finally:
             db.close()
 
-    def save_biometric_profile(self, user_id: str, profile_data: dict) -> BiometricProfileModel:
+    def save_biometric_profile(
+        self, user_id: str, profile_data: dict
+    ) -> BiometricProfileModel:
         """Save or update biometric profile"""
         db = self.SessionLocal()
         try:
-            profile = db.query(BiometricProfileModel).filter(
-                BiometricProfileModel.user_id == user_id
-            ).first()
-            
+            profile = (
+                db.query(BiometricProfileModel)
+                .filter(BiometricProfileModel.user_id == user_id)
+                .first()
+            )
+
             if profile:
                 profile.profile_data = profile_data
             else:
-                profile = BiometricProfileModel(user_id=user_id, profile_data=profile_data)
+                profile = BiometricProfileModel(
+                    user_id=user_id, profile_data=profile_data
+                )
                 db.add(profile)
-            
+
             db.commit()
             db.refresh(profile)
             logger.info(f"Biometric profile saved for user: {user_id}")
@@ -79,10 +88,13 @@ class DatabaseStore:
         """Get latest biometric profile for user"""
         db = self.SessionLocal()
         try:
-            profile = db.query(BiometricProfileModel).filter(
-                BiometricProfileModel.user_id == user_id
-            ).order_by(BiometricProfileModel.created_at.desc()).first()
-            
+            profile = (
+                db.query(BiometricProfileModel)
+                .filter(BiometricProfileModel.user_id == user_id)
+                .order_by(BiometricProfileModel.created_at.desc())
+                .first()
+            )
+
             return profile.profile_data if profile else None
         finally:
             db.close()

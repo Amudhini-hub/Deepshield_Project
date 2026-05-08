@@ -1,12 +1,13 @@
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 import logging
 import time
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from backend.alerting import get_alert_manager
 from backend.api import api_router
 from backend.config.config import get_config
-from backend.database import init_db, health_check
+from backend.database import health_check, init_db
 from backend.exceptions import register_exception_handlers
 from backend.logging_config import setup_logging
 from backend.middleware import LoggingMiddleware
@@ -104,7 +105,7 @@ async def all_metrics(hours: int = 24) -> dict:
         "system_health": get_system_health(),
         "api_stats": get_api_stats(hours),
         "security_stats": get_security_stats(hours),
-        "timestamp": time.time()
+        "timestamp": time.time(),
     }
 
 
@@ -114,7 +115,7 @@ async def get_active_alerts() -> dict:
     alert_manager = get_alert_manager()
     return {
         "active_alerts": alert_manager.get_active_alerts(),
-        "count": len(alert_manager.get_active_alerts())
+        "count": len(alert_manager.get_active_alerts()),
     }
 
 
@@ -124,7 +125,7 @@ async def get_alert_history(hours: int = 24) -> dict:
     alert_manager = get_alert_manager()
     return {
         "alert_history": alert_manager.get_alert_history(hours),
-        "count": len(alert_manager.get_alert_history(hours))
+        "count": len(alert_manager.get_alert_history(hours)),
     }
 
 
@@ -148,9 +149,8 @@ async def get_alert_rules() -> dict:
                 "severity": rule.severity,
                 "enabled": rule.enabled,
                 "description": rule.description,
-                "cooldown_minutes": rule.cooldown_minutes
+                "cooldown_minutes": rule.cooldown_minutes,
             }
             for rule in alert_manager.alert_rules.values()
         ]
     }
-

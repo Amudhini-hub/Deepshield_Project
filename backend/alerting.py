@@ -4,24 +4,27 @@ DeepShield Alerting System
 Provides configurable alerts for system health, performance, and security events
 """
 
+import json
 import logging
 import smtplib
-import json
-import time
-from datetime import datetime, timedelta
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from typing import Dict, List, Optional, Callable
-from dataclasses import dataclass
-from pathlib import Path
 import threading
+import time
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from pathlib import Path
+from typing import Callable, Dict, List, Optional
+
 import requests
 
 logger = logging.getLogger(__name__)
 
+
 @dataclass
 class AlertRule:
     """Alert rule configuration"""
+
     name: str
     condition: str  # Python expression to evaluate
     threshold: float
@@ -30,9 +33,11 @@ class AlertRule:
     enabled: bool = True
     description: str = ""
 
+
 @dataclass
 class Alert:
     """Alert instance"""
+
     rule_name: str
     severity: str
     message: str
@@ -42,10 +47,13 @@ class Alert:
     resolved: bool = False
     resolved_at: Optional[str] = None
 
+
 class AlertManager:
     """Manages alerts and notifications"""
 
-    def __init__(self, config_file: str = "alerts_config.json", alerts_dir: str = "alerts"):
+    def __init__(
+        self, config_file: str = "alerts_config.json", alerts_dir: str = "alerts"
+    ):
         self.config_file = Path(config_file)
         self.alerts_dir = Path(alerts_dir)
         self.alerts_dir.mkdir(exist_ok=True)
@@ -61,7 +69,7 @@ class AlertManager:
             "username": "",
             "password": "",
             "from_email": "",
-            "to_emails": []
+            "to_emails": [],
         }
 
         self.slack_webhook = ""
@@ -75,7 +83,9 @@ class AlertManager:
         self._load_config()
 
         # Start alert monitoring
-        self.monitoring_thread = threading.Thread(target=self._monitor_alerts, daemon=True)
+        self.monitoring_thread = threading.Thread(
+            target=self._monitor_alerts, daemon=True
+        )
         self.monitoring_thread.start()
 
         logger.info("Alert manager initialized")
@@ -89,7 +99,7 @@ class AlertManager:
                 threshold=90.0,
                 severity="high",
                 cooldown_minutes=10,
-                description="CPU usage exceeds threshold"
+                description="CPU usage exceeds threshold",
             ),
             "high_memory": AlertRule(
                 name="high_memory",
@@ -97,7 +107,7 @@ class AlertManager:
                 threshold=85.0,
                 severity="high",
                 cooldown_minutes=10,
-                description="Memory usage exceeds threshold"
+                description="Memory usage exceeds threshold",
             ),
             "low_disk_space": AlertRule(
                 name="low_disk_space",
@@ -105,7 +115,7 @@ class AlertManager:
                 threshold=90.0,
                 severity="critical",
                 cooldown_minutes=60,
-                description="Disk space is critically low"
+                description="Disk space is critically low",
             ),
             "high_error_rate": AlertRule(
                 name="high_error_rate",
@@ -113,7 +123,7 @@ class AlertManager:
                 threshold=10.0,
                 severity="medium",
                 cooldown_minutes=15,
-                description="API error rate exceeds threshold"
+                description="API error rate exceeds threshold",
             ),
             "slow_response_time": AlertRule(
                 name="slow_response_time",
@@ -121,7 +131,7 @@ class AlertManager:
                 threshold=2000.0,
                 severity="medium",
                 cooldown_minutes=5,
-                description="Average API response time is too slow"
+                description="Average API response time is too slow",
             ),
             "high_risk_events": AlertRule(
                 name="high_risk_events",
@@ -129,15 +139,15 @@ class AlertManager:
                 threshold=5,
                 severity="high",
                 cooldown_minutes=30,
-                description="High number of security risk events detected"
-            )
+                description="High number of security risk events detected",
+            ),
         }
 
     def _load_config(self):
         """Load alert configuration from file"""
         try:
             if self.config_file.exists():
-                with open(self.config_file, 'r') as f:
+                with open(self.config_file, "r") as f:
                     config = json.load(f)
 
                 # Load email config
@@ -171,16 +181,16 @@ class AlertManager:
                 "slack_webhook": self.slack_webhook,
                 "telegram": {
                     "bot_token": self.telegram_bot_token,
-                    "chat_id": self.telegram_chat_id
+                    "chat_id": self.telegram_chat_id,
                 },
                 "custom_rules": [
                     {k: v for k, v in rule.__dict__.items()}
                     for rule in self.alert_rules.values()
                     if rule.name not in self._get_default_rules()
-                ]
+                ],
             }
 
-            with open(self.config_file, 'w') as f:
+            with open(self.config_file, "w") as f:
                 json.dump(config, f, indent=2)
 
         except Exception as e:
@@ -204,7 +214,9 @@ class AlertManager:
         if rule_name in self.alert_rules:
             self.alert_rules[rule_name].enabled = enabled
             self._save_config()
-            logger.info(f"{'Enabled' if enabled else 'Disabled'} alert rule: {rule_name}")
+            logger.info(
+                f"{'Enabled' if enabled else 'Disabled'} alert rule: {rule_name}"
+            )
 
     def check_alerts(self, metrics_data: Dict):
         """Check all alert rules against current metrics"""
@@ -216,7 +228,9 @@ class AlertManager:
 
             try:
                 # Evaluate condition
-                condition_met = self._evaluate_condition(rule.condition, metrics_data, rule.threshold)
+                condition_met = self._evaluate_condition(
+                    rule.condition, metrics_data, rule.threshold
+                )
 
                 if condition_met:
                     # Check cooldown
@@ -227,21 +241,25 @@ class AlertManager:
                             message=f"{rule.description}: {self._get_metric_value(metrics_data, rule.condition)}",
                             timestamp=datetime.now().isoformat(),
                             value=self._get_metric_value(metrics_data, rule.condition),
-                            threshold=rule.threshold
+                            threshold=rule.threshold,
                         )
 
                         self.active_alerts[rule.name] = alert
                         self.alert_history.append(alert)
                         triggered_alerts.append(alert)
 
-                        logger.warning(f"Alert triggered: {rule.name} - {alert.message}")
+                        logger.warning(
+                            f"Alert triggered: {rule.name} - {alert.message}"
+                        )
 
             except Exception as e:
                 logger.error(f"Error checking alert rule {rule.name}: {e}")
 
         return triggered_alerts
 
-    def _evaluate_condition(self, condition: str, metrics: Dict, threshold: float) -> bool:
+    def _evaluate_condition(
+        self, condition: str, metrics: Dict, threshold: float
+    ) -> bool:
         """Evaluate alert condition expression"""
         # Simple condition evaluation - in production, use a safer expression evaluator
         try:
@@ -314,7 +332,9 @@ class AlertManager:
                 self._send_telegram_alert(alert)
 
             except Exception as e:
-                logger.error(f"Failed to send notification for alert {alert.rule_name}: {e}")
+                logger.error(
+                    f"Failed to send notification for alert {alert.rule_name}: {e}"
+                )
 
     def _send_email_alert(self, alert: Alert):
         """Send email notification"""
@@ -323,9 +343,11 @@ class AlertManager:
 
         try:
             msg = MIMEMultipart()
-            msg['From'] = self.email_config["from_email"]
-            msg['To'] = ", ".join(self.email_config["to_emails"])
-            msg['Subject'] = f"DeepShield Alert: {alert.severity.upper()} - {alert.rule_name}"
+            msg["From"] = self.email_config["from_email"]
+            msg["To"] = ", ".join(self.email_config["to_emails"])
+            msg["Subject"] = (
+                f"DeepShield Alert: {alert.severity.upper()} - {alert.rule_name}"
+            )
 
             body = f"""
 DeepShield Security Alert
@@ -340,12 +362,18 @@ Time: {alert.timestamp}
 Please check the system immediately.
             """
 
-            msg.attach(MIMEText(body, 'plain'))
+            msg.attach(MIMEText(body, "plain"))
 
-            server = smtplib.SMTP(self.email_config["smtp_server"], self.email_config["smtp_port"])
+            server = smtplib.SMTP(
+                self.email_config["smtp_server"], self.email_config["smtp_port"]
+            )
             server.starttls()
             server.login(self.email_config["username"], self.email_config["password"])
-            server.sendmail(self.email_config["from_email"], self.email_config["to_emails"], msg.as_string())
+            server.sendmail(
+                self.email_config["from_email"],
+                self.email_config["to_emails"],
+                msg.as_string(),
+            )
             server.quit()
 
             logger.info(f"Email alert sent for {alert.rule_name}")
@@ -362,7 +390,7 @@ Please check the system immediately.
             payload = {
                 "text": f":warning: *DeepShield Alert*\n*Severity:* {alert.severity.upper()}\n*Rule:* {alert.rule_name}\n*Message:* {alert.message}\n*Time:* {alert.timestamp}",
                 "username": "DeepShield Monitor",
-                "icon_emoji": ":shield:"
+                "icon_emoji": ":shield:",
             }
 
             response = requests.post(self.slack_webhook, json=payload)
@@ -394,7 +422,7 @@ Please check the system immediately.
             payload = {
                 "chat_id": self.telegram_chat_id,
                 "text": message,
-                "parse_mode": "Markdown"
+                "parse_mode": "Markdown",
             }
 
             response = requests.post(url, json=payload)
@@ -413,16 +441,20 @@ Please check the system immediately.
         """Get alert history"""
         cutoff_time = datetime.now() - timedelta(hours=hours)
         return [
-            alert.__dict__ for alert in self.alert_history
+            alert.__dict__
+            for alert in self.alert_history
             if datetime.fromisoformat(alert.timestamp) > cutoff_time
         ]
+
 
 # Global alert manager instance
 alert_manager = AlertManager()
 
+
 def get_alert_manager() -> AlertManager:
     """Get the global alert manager instance"""
     return alert_manager
+
 
 def check_system_alerts(metrics_data: Dict):
     """Check system metrics against alert rules"""

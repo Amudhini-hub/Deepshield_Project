@@ -4,15 +4,16 @@ DeepShield Monitoring and Metrics Setup
 Provides observability, metrics collection, and alerting
 """
 
-import time
-import psutil
-import logging
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional
-from dataclasses import dataclass, asdict
 import json
+import logging
 import threading
+import time
+from dataclasses import asdict, dataclass
+from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Dict, List, Optional
+
+import psutil
 import requests
 
 logger = logging.getLogger(__name__)
@@ -24,9 +25,11 @@ except ImportError:
     # Fallback if alerting module not available
     check_system_alerts = lambda x: []
 
+
 @dataclass
 class SystemMetrics:
     """System resource metrics"""
+
     timestamp: str
     cpu_percent: float
     memory_percent: float
@@ -36,9 +39,11 @@ class SystemMetrics:
     disk_free_gb: float
     network_connections: int
 
+
 @dataclass
 class APIMetrics:
     """API performance metrics"""
+
     timestamp: str
     endpoint: str
     method: str
@@ -47,9 +52,11 @@ class APIMetrics:
     user_id: Optional[str] = None
     error_type: Optional[str] = None
 
+
 @dataclass
 class SecurityMetrics:
     """Security-related metrics"""
+
     timestamp: str
     event_type: str
     user_id: Optional[str] = None
@@ -57,6 +64,7 @@ class SecurityMetrics:
     user_agent: Optional[str] = None
     risk_score: Optional[float] = None
     action_taken: Optional[str] = None
+
 
 class MetricsCollector:
     """Collects and manages system and application metrics"""
@@ -72,7 +80,9 @@ class MetricsCollector:
         self.security_metrics: List[SecurityMetrics] = []
 
         # Start background collection
-        self.collection_thread = threading.Thread(target=self._background_collection, daemon=True)
+        self.collection_thread = threading.Thread(
+            target=self._background_collection, daemon=True
+        )
         self.collection_thread.start()
 
         logger.info("Metrics collector initialized")
@@ -90,7 +100,7 @@ class MetricsCollector:
             memory_available_mb = memory.available / (1024 * 1024)
 
             # Disk
-            disk = psutil.disk_usage('/')
+            disk = psutil.disk_usage("/")
             disk_usage_percent = disk.percent
             disk_free_gb = disk.free / (1024 * 1024 * 1024)
 
@@ -105,7 +115,7 @@ class MetricsCollector:
                 memory_available_mb=memory_available_mb,
                 disk_usage_percent=disk_usage_percent,
                 disk_free_gb=disk_free_gb,
-                network_connections=network_connections
+                network_connections=network_connections,
             )
 
             self.system_metrics.append(metrics)
@@ -115,9 +125,15 @@ class MetricsCollector:
             logger.error(f"Failed to collect system metrics: {e}")
             return None
 
-    def record_api_metrics(self, endpoint: str, method: str, response_time_ms: float,
-                          status_code: int, user_id: Optional[str] = None,
-                          error_type: Optional[str] = None):
+    def record_api_metrics(
+        self,
+        endpoint: str,
+        method: str,
+        response_time_ms: float,
+        status_code: int,
+        user_id: Optional[str] = None,
+        error_type: Optional[str] = None,
+    ):
         """Record API call metrics"""
         try:
             metrics = APIMetrics(
@@ -127,14 +143,16 @@ class MetricsCollector:
                 response_time_ms=response_time_ms,
                 status_code=status_code,
                 user_id=user_id,
-                error_type=error_type
+                error_type=error_type,
             )
 
             self.api_metrics.append(metrics)
 
             # Log slow requests
             if response_time_ms > 1000:  # 1 second
-                logger.warning(f"Slow API request: {endpoint} took {response_time_ms:.2f}ms")
+                logger.warning(
+                    f"Slow API request: {endpoint} took {response_time_ms:.2f}ms"
+                )
 
             # Log errors
             if status_code >= 400:
@@ -143,9 +161,15 @@ class MetricsCollector:
         except Exception as e:
             logger.error(f"Failed to record API metrics: {e}")
 
-    def record_security_metrics(self, event_type: str, user_id: Optional[str] = None,
-                               ip_address: Optional[str] = None, user_agent: Optional[str] = None,
-                               risk_score: Optional[float] = None, action_taken: Optional[str] = None):
+    def record_security_metrics(
+        self,
+        event_type: str,
+        user_id: Optional[str] = None,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
+        risk_score: Optional[float] = None,
+        action_taken: Optional[str] = None,
+    ):
         """Record security event metrics"""
         try:
             metrics = SecurityMetrics(
@@ -155,14 +179,16 @@ class MetricsCollector:
                 ip_address=ip_address,
                 user_agent=user_agent,
                 risk_score=risk_score,
-                action_taken=action_taken
+                action_taken=action_taken,
             )
 
             self.security_metrics.append(metrics)
 
             # Log high-risk events
             if risk_score and risk_score > 0.8:
-                logger.warning(f"High-risk security event: {event_type} for user {user_id}")
+                logger.warning(
+                    f"High-risk security event: {event_type} for user {user_id}"
+                )
 
         except Exception as e:
             logger.error(f"Failed to record security metrics: {e}")
@@ -205,19 +231,22 @@ class MetricsCollector:
 
         # Clean system metrics
         self.system_metrics = [
-            m for m in self.system_metrics
+            m
+            for m in self.system_metrics
             if datetime.fromisoformat(m.timestamp) > cutoff_date
         ]
 
         # Clean API metrics
         self.api_metrics = [
-            m for m in self.api_metrics
+            m
+            for m in self.api_metrics
             if datetime.fromisoformat(m.timestamp) > cutoff_date
         ]
 
         # Clean security metrics
         self.security_metrics = [
-            m for m in self.security_metrics
+            m
+            for m in self.security_metrics
             if datetime.fromisoformat(m.timestamp) > cutoff_date
         ]
 
@@ -229,20 +258,24 @@ class MetricsCollector:
             # Save system metrics
             if self.system_metrics:
                 system_file = self.metrics_dir / f"system_metrics_{timestamp}.json"
-                with open(system_file, 'w') as f:
-                    json.dump([asdict(m) for m in self.system_metrics[-100:]], f, indent=2)
+                with open(system_file, "w") as f:
+                    json.dump(
+                        [asdict(m) for m in self.system_metrics[-100:]], f, indent=2
+                    )
 
             # Save API metrics
             if self.api_metrics:
                 api_file = self.metrics_dir / f"api_metrics_{timestamp}.json"
-                with open(api_file, 'w') as f:
+                with open(api_file, "w") as f:
                     json.dump([asdict(m) for m in self.api_metrics[-500:]], f, indent=2)
 
             # Save security metrics
             if self.security_metrics:
                 security_file = self.metrics_dir / f"security_metrics_{timestamp}.json"
-                with open(security_file, 'w') as f:
-                    json.dump([asdict(m) for m in self.security_metrics[-200:]], f, indent=2)
+                with open(security_file, "w") as f:
+                    json.dump(
+                        [asdict(m) for m in self.security_metrics[-200:]], f, indent=2
+                    )
 
         except Exception as e:
             logger.error(f"Failed to save metrics: {e}")
@@ -283,7 +316,7 @@ class MetricsCollector:
             "status": health_status,
             "timestamp": latest.timestamp,
             "issues": issues,
-            "metrics": asdict(latest)
+            "metrics": asdict(latest),
         }
 
     def get_api_stats(self, hours: int = 24) -> Dict:
@@ -292,7 +325,8 @@ class MetricsCollector:
 
         # Filter recent metrics
         recent_metrics = [
-            m for m in self.api_metrics
+            m
+            for m in self.api_metrics
             if datetime.fromisoformat(m.timestamp) > cutoff_time
         ]
 
@@ -301,13 +335,19 @@ class MetricsCollector:
 
         # Calculate statistics
         total_requests = len(recent_metrics)
-        avg_response_time = sum(m.response_time_ms for m in recent_metrics) / total_requests
+        avg_response_time = (
+            sum(m.response_time_ms for m in recent_metrics) / total_requests
+        )
 
         status_counts = {}
         for m in recent_metrics:
             status_counts[m.status_code] = status_counts.get(m.status_code, 0) + 1
 
-        error_rate = sum(1 for m in recent_metrics if m.status_code >= 400) / total_requests * 100
+        error_rate = (
+            sum(1 for m in recent_metrics if m.status_code >= 400)
+            / total_requests
+            * 100
+        )
 
         # Endpoint performance
         endpoint_stats = {}
@@ -319,7 +359,9 @@ class MetricsCollector:
             endpoint_stats[key]["total_time"] += m.response_time_ms
 
         for key in endpoint_stats:
-            endpoint_stats[key]["avg_time"] = endpoint_stats[key]["total_time"] / endpoint_stats[key]["count"]
+            endpoint_stats[key]["avg_time"] = (
+                endpoint_stats[key]["total_time"] / endpoint_stats[key]["count"]
+            )
 
         return {
             "total_requests": total_requests,
@@ -327,7 +369,7 @@ class MetricsCollector:
             "error_rate_percent": error_rate,
             "status_codes": status_counts,
             "endpoint_performance": endpoint_stats,
-            "time_range_hours": hours
+            "time_range_hours": hours,
         }
 
     def get_security_stats(self, hours: int = 24) -> Dict:
@@ -336,7 +378,8 @@ class MetricsCollector:
 
         # Filter recent metrics
         recent_metrics = [
-            m for m in self.security_metrics
+            m
+            for m in self.security_metrics
             if datetime.fromisoformat(m.timestamp) > cutoff_time
         ]
 
@@ -353,46 +396,65 @@ class MetricsCollector:
         avg_risk_score = sum(risk_scores) / len(risk_scores) if risk_scores else 0
 
         # High-risk events
-        high_risk_events = sum(1 for m in recent_metrics if m.risk_score and m.risk_score > 0.7)
+        high_risk_events = sum(
+            1 for m in recent_metrics if m.risk_score and m.risk_score > 0.7
+        )
 
         return {
             "total_events": len(recent_metrics),
             "event_types": event_counts,
             "avg_risk_score": avg_risk_score,
             "high_risk_events": high_risk_events,
-            "time_range_hours": hours
+            "time_range_hours": hours,
         }
+
 
 # Global metrics collector instance
 metrics_collector = MetricsCollector()
+
 
 def get_metrics_collector() -> MetricsCollector:
     """Get the global metrics collector instance"""
     return metrics_collector
 
-def record_api_call(endpoint: str, method: str, response_time_ms: float,
-                   status_code: int, user_id: Optional[str] = None,
-                   error_type: Optional[str] = None):
+
+def record_api_call(
+    endpoint: str,
+    method: str,
+    response_time_ms: float,
+    status_code: int,
+    user_id: Optional[str] = None,
+    error_type: Optional[str] = None,
+):
     """Convenience function to record API metrics"""
     metrics_collector.record_api_metrics(
         endpoint, method, response_time_ms, status_code, user_id, error_type
     )
 
-def record_security_event(event_type: str, user_id: Optional[str] = None,
-                         ip_address: Optional[str] = None, user_agent: Optional[str] = None,
-                         risk_score: Optional[float] = None, action_taken: Optional[str] = None):
+
+def record_security_event(
+    event_type: str,
+    user_id: Optional[str] = None,
+    ip_address: Optional[str] = None,
+    user_agent: Optional[str] = None,
+    risk_score: Optional[float] = None,
+    action_taken: Optional[str] = None,
+):
     """Convenience function to record security metrics"""
     metrics_collector.record_security_metrics(
         event_type, user_id, ip_address, user_agent, risk_score, action_taken
     )
 
+
 def get_system_health() -> Dict:
     """Get current system health"""
     return metrics_collector.get_system_health()
 
+
 def get_api_stats(hours: int = 24) -> Dict:
     """Get API performance statistics"""
     return metrics_collector.get_api_stats(hours)
+
 
 def get_security_stats(hours: int = 24) -> Dict:
     """Get security event statistics"""

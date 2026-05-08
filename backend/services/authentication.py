@@ -1,6 +1,6 @@
+import uuid
 from datetime import datetime, timedelta
 from typing import Dict, Optional
-import uuid
 
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -34,8 +34,9 @@ def get_password_hash(password: str) -> str:
         # Fallback implementation if hashing fails
         import hashlib
         import os
+
         salt = os.urandom(32)
-        key = hashlib.pbkdf2_hmac('sha256', password.encode(), salt, 100000)
+        key = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, 100000)
         return f"pbkdf2:{salt.hex()}:{key.hex()}"
 
 
@@ -47,11 +48,14 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
         # Fallback for pbkdf2 hashes
         if hashed_password.startswith("pbkdf2:"):
             import hashlib
+
             parts = hashed_password.split(":")
             if len(parts) == 3:
                 salt = bytes.fromhex(parts[1])
                 stored_key = parts[2]
-                key = hashlib.pbkdf2_hmac('sha256', plain_password.encode(), salt, 100000)
+                key = hashlib.pbkdf2_hmac(
+                    "sha256", plain_password.encode(), salt, 100000
+                )
                 return key.hex() == stored_key
         return False
 
@@ -61,13 +65,15 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
     to_encode = data.copy()
     now = datetime.utcnow()
     expire = now + (expires_delta or timedelta(hours=config.JWT_EXPIRATION_HOURS))
-    to_encode.update({
-        "exp": expire,
-        "iat": now,
-        "jti": str(uuid.uuid4()),
-        "nonce": str(uuid.uuid4()),
-        "type": TOKEN_TYPE_ACCESS,
-    })
+    to_encode.update(
+        {
+            "exp": expire,
+            "iat": now,
+            "jti": str(uuid.uuid4()),
+            "nonce": str(uuid.uuid4()),
+            "type": TOKEN_TYPE_ACCESS,
+        }
+    )
     return jwt.encode(to_encode, config.SECRET_KEY, algorithm=config.JWT_ALGORITHM)
 
 
@@ -75,15 +81,26 @@ def create_refresh_token(data: dict, expires_delta: timedelta | None = None) -> 
     """Create JWT refresh token"""
     to_encode = data.copy()
     now = datetime.utcnow()
-    expire = now + (expires_delta or timedelta(days=config.REFRESH_TOKEN_EXPIRATION_DAYS))
-    to_encode.update({"exp": expire, "iat": now, "nonce": str(uuid.uuid4()), "type": TOKEN_TYPE_REFRESH})
+    expire = now + (
+        expires_delta or timedelta(days=config.REFRESH_TOKEN_EXPIRATION_DAYS)
+    )
+    to_encode.update(
+        {
+            "exp": expire,
+            "iat": now,
+            "nonce": str(uuid.uuid4()),
+            "type": TOKEN_TYPE_REFRESH,
+        }
+    )
     return jwt.encode(to_encode, config.SECRET_KEY, algorithm=config.JWT_ALGORITHM)
 
 
 def decode_access_token(token: str) -> Optional[Dict]:
     """Decode and validate JWT access token"""
     try:
-        payload = jwt.decode(token, config.SECRET_KEY, algorithms=[config.JWT_ALGORITHM])
+        payload = jwt.decode(
+            token, config.SECRET_KEY, algorithms=[config.JWT_ALGORITHM]
+        )
         if payload.get("type") != TOKEN_TYPE_ACCESS:
             return None
         return payload
@@ -94,7 +111,9 @@ def decode_access_token(token: str) -> Optional[Dict]:
 def decode_refresh_token(token: str) -> Optional[Dict]:
     """Decode and validate JWT refresh token"""
     try:
-        payload = jwt.decode(token, config.SECRET_KEY, algorithms=[config.JWT_ALGORITHM])
+        payload = jwt.decode(
+            token, config.SECRET_KEY, algorithms=[config.JWT_ALGORITHM]
+        )
         if payload.get("type") != TOKEN_TYPE_REFRESH:
             return None
         return payload

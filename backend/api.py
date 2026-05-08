@@ -8,29 +8,33 @@ import os
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
 try:
     import cv2
     import numpy as np
+
     CV2_AVAILABLE = True
 except ImportError:
     CV2_AVAILABLE = False
 
+import backend.crud as crud
 from backend.config.config import get_config
+from backend.crud import rebuild_behavioral_profile
 from backend.database import get_db
+from backend.models import User
 from backend.schemas import (
     BaselineCreateRequest,
     BehavioralAnalysisRequest,
     BehavioralAnalysisResponse,
     BehavioralProfileResponse,
     LogoutRequest,
+    RefreshTokenRequest,
     RiskAssessmentRequest,
     RiskAssessmentResponse,
     TokenResponse,
-    RefreshTokenRequest,
     UserCreateRequest,
     UserResponse,
     UserUpdateRequest,
@@ -44,14 +48,12 @@ from backend.services.authentication import (
 )
 from backend.services.behavioral_biometrics import BehavioralBiometricsEngine
 from backend.services.risk_assessment import RiskAssessmentEngine
-import backend.crud as crud
-from backend.crud import rebuild_behavioral_profile
-from backend.models import User
 
 # ML services - optional
 try:
     from backend.services.deepfake_detection import DeepfakeDetector
     from backend.services.liveness_detection import LivenessDetector
+
     ML_AVAILABLE = True
 except (ImportError, Exception):
     ML_AVAILABLE = False
@@ -85,7 +87,10 @@ TOKEN_BLACKLIST = set()
 
 # ==================== DEPENDENCY INJECTION ====================
 
-def get_current_user(token: Optional[str] = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> User:
+
+def get_current_user(
+    token: Optional[str] = Depends(oauth2_scheme), db: Session = Depends(get_db)
+) -> User:
     """Get currently authenticated user from token"""
     if not token:
         raise HTTPException(
@@ -101,7 +106,7 @@ def get_current_user(token: Optional[str] = Depends(oauth2_scheme), db: Session 
             detail="Token has been revoked",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     payload = decode_access_token(token)
     if payload is None:
         raise HTTPException(
@@ -109,7 +114,7 @@ def get_current_user(token: Optional[str] = Depends(oauth2_scheme), db: Session 
             detail="Invalid or expired authentication credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     user_id = payload.get("sub")
     if not user_id:
         raise HTTPException(
@@ -117,7 +122,7 @@ def get_current_user(token: Optional[str] = Depends(oauth2_scheme), db: Session 
             detail="Invalid token payload",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     try:
         user = crud.get_user(db, int(user_id))
         if user is None:
@@ -143,13 +148,16 @@ def get_current_user(token: Optional[str] = Depends(oauth2_scheme), db: Session 
 
 # ==================== USER AUTHENTICATION ENDPOINTS ====================
 
+
 @api_router.post(
     "/users/register",
     response_model=UserResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Register a new user",
 )
-async def register_user(payload: UserCreateRequest, db: Session = Depends(get_db)) -> UserResponse:
+async def register_user(
+    payload: UserCreateRequest, db: Session = Depends(get_db)
+) -> UserResponse:
     """Register a new user with email and password."""
     try:
         existing = crud.get_user_by_email(db, payload.email)
@@ -158,15 +166,17 @@ async def register_user(payload: UserCreateRequest, db: Session = Depends(get_db
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Email {payload.email} is already registered",
             )
-        
+
         user = crud.create_user(db, payload.email, payload.password)
-        
+
         # Log the registration
-        crud.create_audit_log(db, str(user.id), "USER_REGISTERED", {
-            "email": user.email,
-            "timestamp": datetime.utcnow().isoformat()
-        })
-        
+        crud.create_audit_log(
+            db,
+            str(user.id),
+            "USER_REGISTERED",
+            {"email": user.email, "timestamp": datetime.utcnow().isoformat()},
+        )
+
         logger.info(f"User registered: {payload.email}")
         return UserResponse(
             id=user.id,
@@ -191,41 +201,42 @@ async def register_user(payload: UserCreateRequest, db: Session = Depends(get_db
     summary="Login user",
 )
 async def login_user(
-    form_data: OAuth2PasswordRequestForm = Depends(),
-    db: Session = Depends(get_db)
+    form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)
 ) -> TokenResponse:
     """Authenticate user and return JWT tokens."""
     try:
         user = crud.get_user_by_email(db, form_data.username)
-        if user is None or not verify_password(form_data.password, user.hashed_password):
+        if user is None or not verify_password(
+            form_data.password, user.hashed_password
+        ):
             logger.warning(f"Failed login attempt for {form_data.username}")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Incorrect email or password",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        
+
         if not user.is_active:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="User account is deactivated",
             )
-        
+
         # Create tokens
         access_token = create_access_token({"sub": str(user.id)})
         refresh_token = create_refresh_token({"sub": str(user.id)})
-        
+
         # Log the login
-        crud.create_audit_log(db, str(user.id), "USER_LOGIN", {
-            "timestamp": datetime.utcnow().isoformat()
-        })
-        
+        crud.create_audit_log(
+            db, str(user.id), "USER_LOGIN", {"timestamp": datetime.utcnow().isoformat()}
+        )
+
         logger.info(f"User logged in: {user.email}")
         return TokenResponse(
             access_token=access_token,
             refresh_token=refresh_token,
             token_type="bearer",
-            expires_in=config.JWT_EXPIRATION_HOURS * 3600
+            expires_in=config.JWT_EXPIRATION_HOURS * 3600,
         )
     except HTTPException:
         raise
@@ -244,8 +255,7 @@ async def login_user(
     summary="Refresh access token",
 )
 async def refresh_access_token(
-    payload: RefreshTokenRequest,
-    db: Session = Depends(get_db)
+    payload: RefreshTokenRequest, db: Session = Depends(get_db)
 ) -> TokenResponse:
     """Get a new access token using a valid refresh token."""
     try:
@@ -256,37 +266,37 @@ async def refresh_access_token(
                 detail="Invalid or expired refresh token",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        
+
         user_id = decoded.get("sub")
         if not user_id:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid token payload",
             )
-        
+
         user = crud.get_user(db, int(user_id))
         if user is None:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="User not found",
             )
-        
+
         if not user.is_active:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="User account is deactivated",
             )
-        
+
         # Create new tokens
         access_token = create_access_token({"sub": str(user.id)})
         new_refresh_token = create_refresh_token({"sub": str(user.id)})
-        
+
         logger.info(f"Token refreshed for user: {user.id}")
         return TokenResponse(
             access_token=access_token,
             refresh_token=new_refresh_token,
             token_type="bearer",
-            expires_in=config.JWT_EXPIRATION_HOURS * 3600
+            expires_in=config.JWT_EXPIRATION_HOURS * 3600,
         )
     except HTTPException:
         raise
@@ -304,20 +314,22 @@ async def refresh_access_token(
     summary="Logout user",
 )
 async def logout_user(
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ) -> dict:
     """Logout user by invalidating token."""
     try:
-        crud.create_audit_log(db, str(current_user.id), "USER_LOGOUT", {
-            "timestamp": datetime.utcnow().isoformat()
-        })
-        
+        crud.create_audit_log(
+            db,
+            str(current_user.id),
+            "USER_LOGOUT",
+            {"timestamp": datetime.utcnow().isoformat()},
+        )
+
         logger.info(f"User logged out: {current_user.email}")
         return {
             "status": "success",
             "message": "User logged out successfully",
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.utcnow().isoformat(),
         }
     except Exception as e:
         logger.error(f"Error logging out user: {e}")
@@ -333,7 +345,9 @@ async def logout_user(
     status_code=status.HTTP_200_OK,
     summary="Get current user profile",
 )
-async def get_authenticated_user(current_user: User = Depends(get_current_user)) -> UserResponse:
+async def get_authenticated_user(
+    current_user: User = Depends(get_current_user),
+) -> UserResponse:
     """Get profile information of currently authenticated user."""
     return UserResponse(
         id=current_user.id,
@@ -352,23 +366,30 @@ async def get_authenticated_user(current_user: User = Depends(get_current_user))
 async def update_user_profile(
     payload: UserUpdateRequest,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ) -> UserResponse:
     """Update user email and/or password."""
     try:
-        user = crud.update_user(db, current_user.id, email=payload.email, password=payload.password)
-        
+        user = crud.update_user(
+            db, current_user.id, email=payload.email, password=payload.password
+        )
+
         if user is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="User not found",
             )
-        
-        crud.create_audit_log(db, str(user.id), "USER_UPDATED", {
-            "fields": [k for k, v in payload.model_dump().items() if v],
-            "timestamp": datetime.utcnow().isoformat()
-        })
-        
+
+        crud.create_audit_log(
+            db,
+            str(user.id),
+            "USER_UPDATED",
+            {
+                "fields": [k for k, v in payload.model_dump().items() if v],
+                "timestamp": datetime.utcnow().isoformat(),
+            },
+        )
+
         logger.info(f"User profile updated: {user.email}")
         return UserResponse(
             id=user.id,
@@ -390,6 +411,7 @@ async def update_user_profile(
 
 
 # ==================== BEHAVIORAL BIOMETRICS ENDPOINTS ====================
+
 
 @api_router.post(
     "/baseline",
@@ -415,13 +437,18 @@ async def create_baseline(
         )
         profile_data = profile.__dict__.copy()
         profile_data["created_at"] = profile.created_at.isoformat()
-        
+
         crud.save_biometric_profile(db, payload.user_id, profile_data)
-        
-        crud.create_audit_log(db, payload.user_id, "BASELINE_CREATED", {
-            "confidence": profile.confidence,
-            "timestamp": datetime.utcnow().isoformat()
-        })
+
+        crud.create_audit_log(
+            db,
+            payload.user_id,
+            "BASELINE_CREATED",
+            {
+                "confidence": profile.confidence,
+                "timestamp": datetime.utcnow().isoformat(),
+            },
+        )
 
         logger.info(f"Behavioral baseline created for user: {payload.user_id}")
         return BehavioralProfileResponse(
@@ -473,7 +500,7 @@ async def analyze_behavior(
         analysis = biometric_engine.analyze_user_behavior(
             payload.user_id, [event.model_dump() for event in payload.events]
         )
-        
+
         logger.info(f"Behavioral analysis completed for user: {payload.user_id}")
         return BehavioralAnalysisResponse(
             user_id=payload.user_id,
@@ -497,6 +524,7 @@ async def analyze_behavior(
 
 
 # ==================== RISK ASSESSMENT ENDPOINTS ====================
+
 
 @api_router.post(
     "/risk",
@@ -536,6 +564,7 @@ async def assess_risk(payload: RiskAssessmentRequest) -> RiskAssessmentResponse:
 
 # ==================== ML DETECTION ENDPOINTS ====================
 
+
 @api_router.post(
     "/deepfake/detect",
     status_code=status.HTTP_200_OK,
@@ -544,15 +573,15 @@ async def assess_risk(payload: RiskAssessmentRequest) -> RiskAssessmentResponse:
 async def detect_deepfake(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ) -> dict:
     """Detect deepfakes in uploaded video file."""
     if not CV2_AVAILABLE or not ML_AVAILABLE:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Deepfake detection service not available"
+            detail="Deepfake detection service not available",
         )
-    
+
     video_path = None
     try:
         video_data = await file.read()
@@ -561,15 +590,15 @@ async def detect_deepfake(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Empty video file",
             )
-        
+
         video_path = f"/tmp/{file.filename}"
-        with open(video_path, 'wb') as f:
+        with open(video_path, "wb") as f:
             f.write(video_data)
-        
+
         cap = cv2.VideoCapture(video_path)
         frames = []
         frame_count = 0
-        
+
         while frame_count < 30:
             ret, frame = cap.read()
             if not ret:
@@ -577,24 +606,31 @@ async def detect_deepfake(
             frame = cv2.resize(frame, (640, 480))
             frames.append(frame)
             frame_count += 1
-        
+
         cap.release()
-        
+
         if not frames:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Could not extract frames from video",
             )
-        
+
         result = deepfake_detector.detect_from_frames(frames)
-        
-        crud.create_audit_log(db, str(current_user.id), "DEEPFAKE_DETECTION", {
-            "is_deepfake": result.is_deepfake,
-            "confidence": result.confidence,
-            "timestamp": datetime.utcnow().isoformat()
-        })
-        
-        logger.info(f"Deepfake detection for user {current_user.id}: {result.is_deepfake}")
+
+        crud.create_audit_log(
+            db,
+            str(current_user.id),
+            "DEEPFAKE_DETECTION",
+            {
+                "is_deepfake": result.is_deepfake,
+                "confidence": result.confidence,
+                "timestamp": datetime.utcnow().isoformat(),
+            },
+        )
+
+        logger.info(
+            f"Deepfake detection for user {current_user.id}: {result.is_deepfake}"
+        )
         return {
             "user_id": current_user.id,
             "is_deepfake": result.is_deepfake,
@@ -602,16 +638,16 @@ async def detect_deepfake(
             "detection_method": result.detection_method,
             "details": result.details,
             "anomalies": result.anomalies,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.utcnow().isoformat(),
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error in deepfake detection: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Deepfake detection failed: {str(e)}"
+            detail=f"Deepfake detection failed: {str(e)}",
         )
     finally:
         if video_path and os.path.exists(video_path):
@@ -629,15 +665,15 @@ async def detect_deepfake(
 async def detect_liveness(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ) -> dict:
     """Detect liveness in uploaded video file."""
     if not CV2_AVAILABLE or not ML_AVAILABLE:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Liveness detection service not available"
+            detail="Liveness detection service not available",
         )
-    
+
     video_path = None
     try:
         video_data = await file.read()
@@ -646,15 +682,15 @@ async def detect_liveness(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Empty video file",
             )
-        
+
         video_path = f"/tmp/{file.filename}"
-        with open(video_path, 'wb') as f:
+        with open(video_path, "wb") as f:
             f.write(video_data)
-        
+
         cap = cv2.VideoCapture(video_path)
         frames = []
         frame_count = 0
-        
+
         while frame_count < 60:
             ret, frame = cap.read()
             if not ret:
@@ -662,23 +698,28 @@ async def detect_liveness(
             frame = cv2.resize(frame, (640, 480))
             frames.append(frame)
             frame_count += 1
-        
+
         cap.release()
-        
+
         if not frames:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Could not extract frames from video",
             )
-        
+
         result = liveness_detector.detect_from_video_frames(frames)
-        
-        crud.create_audit_log(db, str(current_user.id), "LIVENESS_DETECTION", {
-            "is_alive": result.is_alive,
-            "confidence": result.confidence,
-            "timestamp": datetime.utcnow().isoformat()
-        })
-        
+
+        crud.create_audit_log(
+            db,
+            str(current_user.id),
+            "LIVENESS_DETECTION",
+            {
+                "is_alive": result.is_alive,
+                "confidence": result.confidence,
+                "timestamp": datetime.utcnow().isoformat(),
+            },
+        )
+
         logger.info(f"Liveness detection for user {current_user.id}: {result.is_alive}")
         return {
             "user_id": current_user.id,
@@ -687,16 +728,16 @@ async def detect_liveness(
             "challenge_type": result.challenge_type,
             "details": result.details,
             "frame_count": result.frame_count,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.utcnow().isoformat(),
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error in liveness detection: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Liveness detection failed: {str(e)}"
+            detail=f"Liveness detection failed: {str(e)}",
         )
     finally:
         if video_path and os.path.exists(video_path):
@@ -707,6 +748,7 @@ async def detect_liveness(
 
 
 # ==================== HEALTH & STATUS ENDPOINTS ====================
+
 
 @api_router.get(
     "/health",
