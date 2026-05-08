@@ -76,7 +76,7 @@ if ML_AVAILABLE:
         logger.warning(f"Could not initialize ML services: {e}")
         ML_AVAILABLE = False
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/users/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/users/login", auto_error=False)
 api_router = APIRouter(tags=["deepshield"])
 
 # Token blacklist for logout (in production, use Redis)
@@ -85,8 +85,15 @@ TOKEN_BLACKLIST = set()
 
 # ==================== DEPENDENCY INJECTION ====================
 
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> User:
+def get_current_user(token: Optional[str] = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> User:
     """Get currently authenticated user from token"""
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     # Check if token is blacklisted
     if token in TOKEN_BLACKLIST:
         raise HTTPException(

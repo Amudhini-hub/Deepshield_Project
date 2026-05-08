@@ -486,15 +486,15 @@ class TestCRUDOperations:
         response = client.post(
             "/api/v1/users/register",
             json={
-                "email": f"test_{TestAuthentication}@example.com",
-                "password": "password123"
+                "email": f"test_{self.__class__.__name__}@example.com",
+                "password": "Password123"
             }
         )
         
         assert response.status_code == 201
         data = response.json()
         assert "id" in data
-        assert data["email"] == f"test_{TestAuthentication}@example.com"
+        assert data["email"] == f"test_{self.__class__.__name__}@example.com"
         assert data["is_active"] is True
     
     def test_register_duplicate_email(self):
@@ -504,14 +504,14 @@ class TestCRUDOperations:
         # Register first user
         response1 = client.post(
             "/api/v1/users/register",
-            json={"email": email, "password": "password123"}
+            json={"email": email, "password": "Password123"}
         )
         assert response1.status_code == 201
         
         # Try to register with same email
         response2 = client.post(
             "/api/v1/users/register",
-            json={"email": email, "password": "password456"}
+            json={"email": email, "password": "Password456"}
         )
         assert response2.status_code == 400
         assert "already registered" in response2.json()["detail"]
@@ -519,7 +519,7 @@ class TestCRUDOperations:
     def test_login_user(self):
         """Test user login"""
         email = "login_test@example.com"
-        password = "password123"
+        password = "Password123"
         
         # Register user
         client.post(
@@ -553,7 +553,7 @@ class TestCRUDOperations:
     def test_refresh_token(self):
         """Test token refresh"""
         email = "refresh_test@example.com"
-        password = "password123"
+        password = "Password123"
         
         # Register and login
         client.post(
@@ -594,7 +594,7 @@ class TestCRUDOperations:
     def test_get_current_user(self):
         """Test getting current user info"""
         email = "current_user_test@example.com"
-        password = "password123"
+        password = "Password123"
         
         # Register and login
         client.post(

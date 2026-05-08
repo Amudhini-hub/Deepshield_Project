@@ -126,12 +126,17 @@ class TestBiometricEndpoints:
             "/api/v1/users/login",
             data={"username": "biometric@example.com", "password": "SecurePassword123!"},
         )
-        return resp.json()["access_token"]
+        token = resp.json().get("access_token")
+        user_resp = client.get(
+            "/api/v1/users/me",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        return token, str(user_resp.json()["id"])
 
     def test_create_baseline(self):
-        token = self.get_auth_token()
+        token, user_id = self.get_auth_token()
         payload = {
-            "user_id": "1",
+            "user_id": user_id,
             "events": [
                 {"type": "keypress", "timestamp": 100.0},
                 {"type": "keypress", "timestamp": 105.0},
@@ -148,11 +153,11 @@ class TestBiometricEndpoints:
         )
         assert response.status_code == 201
         data = response.json()
-        assert data["user_id"] == "1"
+        assert data["user_id"] == user_id
         assert data["confidence"] > 0
 
     def test_create_baseline_user_mismatch(self):
-        token = self.get_auth_token()
+        token, _ = self.get_auth_token()
         payload = {
             "user_id": "999",
             "events": [
@@ -168,11 +173,11 @@ class TestBiometricEndpoints:
         assert response.status_code == 403
 
     def test_analyze_behavior(self):
-        token = self.get_auth_token()
+        token, user_id = self.get_auth_token()
 
         # First create baseline
         baseline_payload = {
-            "user_id": "1",
+            "user_id": user_id,
             "events": [
                 {"type": "keypress", "timestamp": 100.0},
                 {"type": "keypress", "timestamp": 105.0},
@@ -187,7 +192,7 @@ class TestBiometricEndpoints:
 
         # Then analyze
         analysis_payload = {
-            "user_id": "1",
+            "user_id": user_id,
             "events": [
                 {"type": "keypress", "timestamp": 100.0},
                 {"type": "keypress", "timestamp": 105.0},
@@ -206,9 +211,9 @@ class TestBiometricEndpoints:
         assert "risk_level" in data
 
     def test_risk_assessment(self):
-        token = self.get_auth_token()
+        token, user_id = self.get_auth_token()
         payload = {
-            "user_id": "1",
+            "user_id": user_id,
             "biometric_analysis": {"overall_score": 0.8},
             "behavioral_analysis": {"confidence": 0.85},
             "context": {

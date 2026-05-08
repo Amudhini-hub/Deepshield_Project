@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 from typing import Dict, Optional
+import uuid
 
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -58,16 +59,24 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
     """Create JWT access token"""
     to_encode = data.copy()
-    expire = datetime.utcnow() + (expires_delta or timedelta(hours=config.JWT_EXPIRATION_HOURS))
-    to_encode.update({"exp": expire, "type": TOKEN_TYPE_ACCESS})
+    now = datetime.utcnow()
+    expire = now + (expires_delta or timedelta(hours=config.JWT_EXPIRATION_HOURS))
+    to_encode.update({
+        "exp": expire,
+        "iat": now,
+        "jti": str(uuid.uuid4()),
+        "nonce": str(uuid.uuid4()),
+        "type": TOKEN_TYPE_ACCESS,
+    })
     return jwt.encode(to_encode, config.SECRET_KEY, algorithm=config.JWT_ALGORITHM)
 
 
 def create_refresh_token(data: dict, expires_delta: timedelta | None = None) -> str:
     """Create JWT refresh token"""
     to_encode = data.copy()
-    expire = datetime.utcnow() + (expires_delta or timedelta(days=config.REFRESH_TOKEN_EXPIRATION_DAYS))
-    to_encode.update({"exp": expire, "type": TOKEN_TYPE_REFRESH})
+    now = datetime.utcnow()
+    expire = now + (expires_delta or timedelta(days=config.REFRESH_TOKEN_EXPIRATION_DAYS))
+    to_encode.update({"exp": expire, "iat": now, "nonce": str(uuid.uuid4()), "type": TOKEN_TYPE_REFRESH})
     return jwt.encode(to_encode, config.SECRET_KEY, algorithm=config.JWT_ALGORITHM)
 
 

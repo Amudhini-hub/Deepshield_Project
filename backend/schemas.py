@@ -32,7 +32,7 @@ class ValidationErrorResponse(BaseModel):
 
 class BehavioralEvent(BaseModel):
     """Single behavioral event (keyboard, mouse, interaction)"""
-    type: str  # 'keystroke', 'mouse_move', 'click', 'scroll'
+    type: str  # 'keystroke', 'keypress', 'mouse_move', 'mousemove', 'click', 'scroll'
     timestamp: float
     x: Optional[float] = None
     y: Optional[float] = None
@@ -42,7 +42,11 @@ class BehavioralEvent(BaseModel):
     @field_validator('type')
     @classmethod
     def validate_type(cls, v):
-        allowed = {'keystroke', 'mouse_move', 'click', 'scroll', 'focus', 'blur'}
+        allowed = {
+            'keystroke', 'keypress',
+            'mouse_move', 'mousemove',
+            'click', 'scroll', 'focus', 'blur'
+        }
         if v not in allowed:
             raise ValueError(f'type must be one of {allowed}')
         return v
@@ -51,7 +55,7 @@ class BehavioralEvent(BaseModel):
 class BaselineCreateRequest(BaseModel):
     """Create behavioral baseline from events"""
     user_id: str
-    events: List[BehavioralEvent] = Field(..., min_items=5, max_items=1000)
+    events: List[BehavioralEvent] = Field(..., min_items=1, max_items=1000)
     
     @field_validator('user_id')
     @classmethod
