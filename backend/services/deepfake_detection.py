@@ -298,34 +298,6 @@ class DeepfakeDetector:
         except Exception as e:
             logger.warning(f"Frame preprocessing error: {e}")
             return None
-        
-        # Identify anomalies
-        anomalies = []
-        if freq_score > 0.7:
-            anomalies.append("Frequency domain anomalies detected")
-        if artifact_score > 0.7:
-            anomalies.append("Compression artifacts detected")
-        if blend_score > 0.7:
-            anomalies.append("Face blending artifacts detected")
-        if consistency_score > 0.7:
-            anomalies.append("Face consistency anomalies detected")
-        
-        is_deepfake = confidence >= self.detection_threshold
-        
-        return DeepfakeResult(
-            is_deepfake=is_deepfake,
-            confidence=float(confidence),
-            detection_method="multi_method",
-            details={
-                "frequency_score": float(freq_score),
-                "artifact_score": float(artifact_score),
-                "blend_score": float(blend_score),
-                "consistency_score": float(consistency_score),
-                "frames_analyzed": len(frames)
-            },
-            frame_count=len(frames),
-            anomalies=anomalies
-        )
     
     def _frequency_analysis(self, frames: List[np.ndarray]) -> float:
         """
