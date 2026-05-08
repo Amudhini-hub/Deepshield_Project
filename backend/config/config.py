@@ -76,12 +76,12 @@ class Config:
     if _custom_db_url:
         DATABASE_URL = _custom_db_url
     else:
-        DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-    
-    # Runtime database selection
-    USE_SQLITE_RUNTIME = os.environ.get("USE_SQLITE", "True").lower() == "true"
-    if USE_SQLITE_RUNTIME:
-        DATABASE_URL = f"sqlite:///./deepshield.db"
+        # Runtime database selection - only if DATABASE_URL not explicitly set
+        USE_SQLITE_RUNTIME = os.environ.get("USE_SQLITE_RUNTIME", "false").lower() == "true"
+        if USE_SQLITE_RUNTIME:
+            DATABASE_URL = "sqlite:///./deepshield.db"
+        else:
+            DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
     
     DATABASE_POOL_SIZE = int(os.getenv("DATABASE_POOL_SIZE", "20"))
     DATABASE_MAX_OVERFLOW = int(os.getenv("DATABASE_MAX_OVERFLOW", "40"))
