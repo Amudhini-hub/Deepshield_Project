@@ -79,7 +79,7 @@ jobs:
         safety check --json > safety-report.json || true
 
     - name: Upload security reports
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: security-reports
         path: |
@@ -114,7 +114,7 @@ jobs:
         python load_test.py --url http://localhost:8000 --users 5 --duration 30 --output load_test_results.json
 
     - name: Upload load test results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: load-test-results
         path: load_test_results.json
