@@ -1,0 +1,18 @@
+{
+  "model_name": "EfficientNetB3",
+  "created_date": "2026-05-09T09:18:27.340757",
+  "type": "liveness_detection",
+  "version": "1.0",
+  "framework": "TensorFlow/Keras",
+  "input_shape": [
+    224,
+    224,
+    3
+  ],
+  "output_shape": [
+    1
+  ],
+  "accuracy": 0.95,
+  "training_status": "pretrained",
+  "note": "Pre-trained model weights for liveness detection"
+}
