@@ -97,6 +97,17 @@ class Config:
     DATABASE_MAX_OVERFLOW = int(os.getenv("DATABASE_MAX_OVERFLOW", "40"))
     DATABASE_ECHO = os.getenv("DATABASE_ECHO", "False").lower() == "true"
 
+    # Redis settings
+    REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+    REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
+    REDIS_DB = int(os.getenv("REDIS_DB", "0"))
+    REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", None)
+    REDIS_ENABLED = os.getenv("REDIS_ENABLED", "True").lower() == "true"
+    
+    # Redis cache settings
+    REDIS_CACHE_TTL_SECONDS = int(os.getenv("REDIS_CACHE_TTL_SECONDS", "3600"))
+    REDIS_SESSION_TTL_HOURS = int(os.getenv("REDIS_SESSION_TTL_HOURS", "24"))
+
     # API settings
     API_HOST = os.getenv("API_HOST", "0.0.0.0")
     API_PORT = int(os.getenv("API_PORT", "5000"))

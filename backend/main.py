@@ -12,6 +12,8 @@ from backend.exceptions import register_exception_handlers
 from backend.logging_config import setup_logging
 from backend.middleware import LoggingMiddleware
 from backend.monitoring import get_api_stats, get_security_stats, get_system_health
+from backend.rate_limit_middleware import RateLimitMiddleware
+from backend.redis_manager import get_redis_manager
 
 # Setup logging before anything else
 config = get_config()
@@ -23,6 +25,34 @@ app = FastAPI(
     version=config.APP_VERSION,
     debug=config.DEBUG,
 )
+
+# Initialize Redis
+redis_manager = None
+try:
+    redis_host = getattr(config, "REDIS_HOST", "localhost")
+    redis_port = getattr(config, "REDIS_PORT", 6379)
+    redis_db = getattr(config, "REDIS_DB", 0)
+    redis_password = getattr(config, "REDIS_PASSWORD", None)
+    
+    redis_manager = get_redis_manager(
+        host=redis_host,
+        port=redis_port,
+        db=redis_db,
+        password=redis_password
+    )
+    if redis_manager.is_connected():
+        logger.info("Redis initialized successfully")
+    else:
+        logger.warning("Redis connection failed - caching/sessions will be unavailable")
+except Exception as e:
+    logger.warning(f"Failed to initialize Redis: {e}")
+    redis_manager = None
+
+# Add rate limiting middleware
+if redis_manager:
+    app.add_middleware(RateLimitMiddleware, redis_manager=redis_manager)
+else:
+    logger.warning("Rate limiting middleware not added - Redis unavailable")
 
 # Add CORS middleware
 if config.ENABLE_CORS:

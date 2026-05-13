@@ -99,8 +99,9 @@ def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # Check if token is blacklisted
-    if token in TOKEN_BLACKLIST:
+    # Check if token is blacklisted (Redis or in-memory fallback)
+    from backend.services.authentication import is_token_blacklisted
+    if is_token_blacklisted(token) or token in TOKEN_BLACKLIST:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token has been revoked",
@@ -314,10 +315,19 @@ async def refresh_access_token(
     summary="Logout user",
 )
 async def logout_user(
-    current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    token: Optional[str] = Depends(oauth2_scheme),
 ) -> dict:
     """Logout user by invalidating token."""
     try:
+        # Blacklist the token using Redis
+        if token:
+            from backend.services.authentication import blacklist_token
+            blacklist_token(token)
+            # Also add to in-memory fallback
+            TOKEN_BLACKLIST.add(token)
+        
         crud.create_audit_log(
             db,
             str(current_user.id),
@@ -763,4 +773,50 @@ async def health() -> dict:
         "version": config.APP_VERSION,
         "timestamp": datetime.utcnow().isoformat(),
         "ml_services": "available" if ML_AVAILABLE else "unavailable",
+    }
+
+
+@api_router.get(
+    "/health/status",
+    status_code=status.HTTP_200_OK,
+    summary="Detailed health status",
+)
+async def detailed_health_status() -> dict:
+    """Get detailed health status of all services."""
+    from backend.redis_manager import get_redis_manager
+    
+    redis_manager = get_redis_manager()
+    redis_stats = redis_manager.get_redis_stats()
+    
+    return {
+        "timestamp": datetime.utcnow().isoformat(),
+        "service": "deepshield",
+        "version": config.APP_VERSION,
+        "components": {
+            "api": {"status": "healthy"},
+            "database": {"status": "healthy" if health_check() else "unhealthy"},
+            "redis": redis_stats,
+            "ml_services": "available" if ML_AVAILABLE else "unavailable",
+        },
+        "environment": config.ENVIRONMENT,
+        "debug_mode": config.DEBUG,
+    }
+
+
+@api_router.get(
+    "/metrics/redis",
+    status_code=status.HTTP_200_OK,
+    summary="Redis metrics",
+    tags=["monitoring"]
+)
+async def redis_metrics(current_user: User = Depends(get_current_user)) -> dict:
+    """Get Redis server metrics (requires authentication)."""
+    from backend.redis_manager import get_redis_manager
+    
+    redis_manager = get_redis_manager()
+    stats = redis_manager.get_redis_stats()
+    
+    return {
+        "timestamp": datetime.utcnow().isoformat(),
+        "redis": stats,
     }

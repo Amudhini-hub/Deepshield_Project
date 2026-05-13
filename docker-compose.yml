@@ -10,11 +10,18 @@ services:
       - SECRET_KEY=your-secret-key-here
       - DATABASE_URL=sqlite:///./deepshield.db
       - DEBUG=true
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      - REDIS_ENABLED=true
     volumes:
       - ./logs:/app/logs
       - ./metrics:/app/metrics
       - ./ml_models:/app/ml_models
       - ./alerts_config.json:/app/alerts_config.json
+    depends_on:
+      redis:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
