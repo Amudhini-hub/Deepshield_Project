@@ -1,0 +1,52 @@
+{
+  "deepfake_detection": {
+    "enabled": true,
+    "models": [
+      "mesonet",
+      "xception_ensemble"
+    ],
+    "ensemble_method": "weighted_voting",
+    "confidence_threshold": 0.8,
+    "detection_methods": [
+      "neural_network",
+      "frequency_domain_analysis",
+      "compression_artifacts",
+      "face_blending_detection",
+      "face_consistency_check"
+    ],
+    "weights": {
+      "neural_network": 0.4,
+      "frequency": 0.2,
+      "artifacts": 0.2,
+      "blending": 0.1,
+      "consistency": 0.1
+    }
+  },
+  "liveness_detection": {
+    "enabled": true,
+    "models": [
+      "efficientnet_b3"
+    ],
+    "confidence_threshold": 0.85,
+    "detection_methods": [
+      "neural_network",
+      "blink_detection",
+      "micro_motions",
+      "frequency_patterns",
+      "rppg"
+    ],
+    "weights": {
+      "neural_network": 0.35,
+      "blink": 0.2,
+      "motion": 0.2,
+      "frequency": 0.15,
+      "rppg": 0.1
+    }
+  },
+  "performance": {
+    "max_video_duration": 30,
+    "frame_rate": 30,
+    "max_frames_to_process": 30,
+    "batch_size": 4
+  }
+}
