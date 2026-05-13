@@ -60,10 +60,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
         return False
 
 
-from typing import Optional
-
-
-def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     """Create JWT access token"""
     to_encode = data.copy()
     now = datetime.utcnow()
@@ -80,7 +77,7 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
     return jwt.encode(to_encode, config.SECRET_KEY, algorithm=config.JWT_ALGORITHM)
 
 
-def create_refresh_token(data: dict, expires_delta: timedelta | None = None) -> str:
+def create_refresh_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     """Create JWT refresh token"""
     to_encode = data.copy()
     now = datetime.utcnow()
