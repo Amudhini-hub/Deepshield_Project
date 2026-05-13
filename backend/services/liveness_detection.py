@@ -50,7 +50,7 @@ class LivenessDetector:
         self.face_cascade = cv2.CascadeClassifier(
             cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
         )
-        self.min_confidence = self.config.get("confidence_threshold", 0.85)
+        self.min_confidence = self.config.get("confidence_threshold", 0.50)
         self.models_dir = self.config.get("models_dir", "ml_models/liveness_detection")
         self.model_config = {}
         
@@ -141,7 +141,7 @@ class LivenessDetector:
             scores["rppg"] = rppg_score * 0.10  # 10% weight
 
             confidence = min(1.0, sum(scores.values()))
-            is_alive = confidence >= (1.0 - self.min_confidence)
+            is_alive = confidence >= self.min_confidence
 
             return LivenessResult(
                 is_alive=is_alive,
@@ -230,12 +230,6 @@ class LivenessDetector:
         except Exception as e:
             logger.warning(f"Neural network inference error: {e}")
             return 0.5
-                is_alive=False,
-                confidence=0.0,
-                challenge_type="error",
-                details={"error": str(e)},
-                frame_count=len(frames),
-            )
 
     def _detect_blink_patterns(self, frames: List[np.ndarray]) -> float:
         """

@@ -5,6 +5,7 @@ Complete REST API implementation for authentication, biometrics, and risk assess
 
 import logging
 import os
+import tempfile
 from datetime import datetime
 from typing import Optional
 
@@ -575,6 +576,75 @@ async def assess_risk(payload: RiskAssessmentRequest) -> RiskAssessmentResponse:
 # ==================== ML DETECTION ENDPOINTS ====================
 
 
+ALLOWED_VIDEO_TYPES = {
+    "video/mp4", "video/webm", "video/avi", "video/quicktime",
+    "video/x-msvideo", "video/x-matroska", "application/octet-stream",
+}
+MAX_VIDEO_SIZE_BYTES = 50 * 1024 * 1024  # 50 MB
+MIN_FRAMES_REQUIRED = 5
+
+
+def _validate_video_upload(file: UploadFile, video_data: bytes) -> None:
+    """Validate video file type and size."""
+    if not video_data:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Empty video file",
+        )
+    if len(video_data) > MAX_VIDEO_SIZE_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"Video file too large. Maximum size is {MAX_VIDEO_SIZE_BYTES // (1024*1024)} MB",
+        )
+    content_type = file.content_type or ""
+    if content_type and content_type not in ALLOWED_VIDEO_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=f"Unsupported file type '{content_type}'. Upload a video file (mp4, webm, avi, mov, mkv)",
+        )
+
+
+def _extract_frames(video_path: str, max_frames: int) -> list:
+    """Extract raw frames from a video file, skip near-black frames."""
+    face_cascade = cv2.CascadeClassifier(
+        cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+    )
+    cap = cv2.VideoCapture(video_path)
+    frames = []
+    face_found = False
+
+    try:
+        total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) or max_frames
+        step = max(1, total // max_frames)
+        pos = 0
+
+        while len(frames) < max_frames:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, pos)
+            ret, frame = cap.read()
+            if not ret:
+                break
+
+            # Skip near-black / corrupted frames
+            if np.mean(frame) < 5:
+                pos += step
+                continue
+
+            frames.append(frame)
+
+            # Check for face presence (sample first 10 extracted frames)
+            if not face_found and len(frames) <= 10:
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                faces = face_cascade.detectMultiScale(gray, 1.1, 5, minSize=(30, 30))
+                if len(faces) > 0:
+                    face_found = True
+
+            pos += step
+    finally:
+        cap.release()
+
+    return frames, face_found
+
+
 @api_router.post(
     "/deepfake/detect",
     status_code=status.HTTP_200_OK,
@@ -592,37 +662,29 @@ async def detect_deepfake(
             detail="Deepfake detection service not available",
         )
 
-    video_path = None
+    tmp_fd, video_path = None, None
     try:
         video_data = await file.read()
-        if not video_data:
+        _validate_video_upload(file, video_data)
+
+        suffix = os.path.splitext(file.filename or "video.mp4")[1] or ".mp4"
+        tmp_fd, video_path = tempfile.mkstemp(suffix=suffix)
+        with os.fdopen(tmp_fd, "wb") as f:
+            f.write(video_data)
+        tmp_fd = None  # fd is closed by fdopen
+
+        frames, face_found = _extract_frames(video_path, max_frames=30)
+
+        if len(frames) < MIN_FRAMES_REQUIRED:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Empty video file",
+                detail=f"Could not extract enough frames (got {len(frames)}, need {MIN_FRAMES_REQUIRED}). Check that the video is valid.",
             )
 
-        video_path = f"/tmp/{file.filename}"
-        with open(video_path, "wb") as f:
-            f.write(video_data)
-
-        cap = cv2.VideoCapture(video_path)
-        frames = []
-        frame_count = 0
-
-        while frame_count < 30:
-            ret, frame = cap.read()
-            if not ret:
-                break
-            frame = cv2.resize(frame, (640, 480))
-            frames.append(frame)
-            frame_count += 1
-
-        cap.release()
-
-        if not frames:
+        if not face_found:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Could not extract frames from video",
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="No face detected in the video. Please upload a video containing a human face.",
             )
 
         result = deepfake_detector.detect_from_frames(frames)
@@ -634,18 +696,18 @@ async def detect_deepfake(
             {
                 "is_deepfake": result.is_deepfake,
                 "confidence": result.confidence,
+                "frame_count": len(frames),
                 "timestamp": datetime.utcnow().isoformat(),
             },
         )
 
-        logger.info(
-            f"Deepfake detection for user {current_user.id}: {result.is_deepfake}"
-        )
+        logger.info(f"Deepfake detection for user {current_user.id}: is_deepfake={result.is_deepfake} confidence={result.confidence:.3f}")
         return {
             "user_id": current_user.id,
             "is_deepfake": result.is_deepfake,
             "confidence": result.confidence,
             "detection_method": result.detection_method,
+            "frame_count": len(frames),
             "details": result.details,
             "anomalies": result.anomalies,
             "timestamp": datetime.utcnow().isoformat(),
@@ -660,6 +722,11 @@ async def detect_deepfake(
             detail=f"Deepfake detection failed: {str(e)}",
         )
     finally:
+        if tmp_fd is not None:
+            try:
+                os.close(tmp_fd)
+            except OSError:
+                pass
         if video_path and os.path.exists(video_path):
             try:
                 os.remove(video_path)
@@ -684,37 +751,29 @@ async def detect_liveness(
             detail="Liveness detection service not available",
         )
 
-    video_path = None
+    tmp_fd, video_path = None, None
     try:
         video_data = await file.read()
-        if not video_data:
+        _validate_video_upload(file, video_data)
+
+        suffix = os.path.splitext(file.filename or "video.mp4")[1] or ".mp4"
+        tmp_fd, video_path = tempfile.mkstemp(suffix=suffix)
+        with os.fdopen(tmp_fd, "wb") as f:
+            f.write(video_data)
+        tmp_fd = None
+
+        frames, face_found = _extract_frames(video_path, max_frames=60)
+
+        if len(frames) < MIN_FRAMES_REQUIRED:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Empty video file",
+                detail=f"Could not extract enough frames (got {len(frames)}, need {MIN_FRAMES_REQUIRED}). Check that the video is valid.",
             )
 
-        video_path = f"/tmp/{file.filename}"
-        with open(video_path, "wb") as f:
-            f.write(video_data)
-
-        cap = cv2.VideoCapture(video_path)
-        frames = []
-        frame_count = 0
-
-        while frame_count < 60:
-            ret, frame = cap.read()
-            if not ret:
-                break
-            frame = cv2.resize(frame, (640, 480))
-            frames.append(frame)
-            frame_count += 1
-
-        cap.release()
-
-        if not frames:
+        if not face_found:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Could not extract frames from video",
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="No face detected in the video. Please upload a video containing a human face.",
             )
 
         result = liveness_detector.detect_from_video_frames(frames)
@@ -726,18 +785,19 @@ async def detect_liveness(
             {
                 "is_alive": result.is_alive,
                 "confidence": result.confidence,
+                "frame_count": len(frames),
                 "timestamp": datetime.utcnow().isoformat(),
             },
         )
 
-        logger.info(f"Liveness detection for user {current_user.id}: {result.is_alive}")
+        logger.info(f"Liveness detection for user {current_user.id}: is_alive={result.is_alive} confidence={result.confidence:.3f}")
         return {
             "user_id": current_user.id,
             "is_alive": result.is_alive,
             "confidence": result.confidence,
             "challenge_type": result.challenge_type,
-            "details": result.details,
             "frame_count": result.frame_count,
+            "details": result.details,
             "timestamp": datetime.utcnow().isoformat(),
         }
 
@@ -750,6 +810,11 @@ async def detect_liveness(
             detail=f"Liveness detection failed: {str(e)}",
         )
     finally:
+        if tmp_fd is not None:
+            try:
+                os.close(tmp_fd)
+            except OSError:
+                pass
         if video_path and os.path.exists(video_path):
             try:
                 os.remove(video_path)
