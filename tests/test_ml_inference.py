@@ -3,15 +3,16 @@ ML Model Integration Tests
 Tests for deepfake detection, liveness detection, and model loading
 """
 
-import pytest
 import numpy as np
-from backend.services.model_loader import (
-    get_model_loader,
-    ModelRegistry,
-    InferencePreprocessor,
-)
+import pytest
+
 from backend.services.deepfake_detection import DeepfakeDetector
 from backend.services.liveness_detection import LivenessDetector
+from backend.services.model_loader import (
+    InferencePreprocessor,
+    ModelRegistry,
+    get_model_loader,
+)
 
 
 class TestModelRegistry:
@@ -95,9 +96,11 @@ class TestInferencePreprocessor:
         """Test image preprocessing"""
         # Create dummy image (480x640x3)
         image = np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8)
-        
-        processed = InferencePreprocessor.preprocess_image(image, target_size=(224, 224))
-        
+
+        processed = InferencePreprocessor.preprocess_image(
+            image, target_size=(224, 224)
+        )
+
         assert processed is not None
         assert processed.shape == (1, 224, 224, 3)
         assert processed.min() >= 0.0
@@ -106,10 +109,14 @@ class TestInferencePreprocessor:
     def test_preprocess_frames(self):
         """Test batch frame preprocessing"""
         # Create dummy frames
-        frames = [np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8) for _ in range(5)]
-        
-        processed = InferencePreprocessor.preprocess_frames(frames, target_size=(224, 224))
-        
+        frames = [
+            np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8) for _ in range(5)
+        ]
+
+        processed = InferencePreprocessor.preprocess_frames(
+            frames, target_size=(224, 224)
+        )
+
         assert processed is not None
         assert processed.shape == (5, 224, 224, 3)
         assert processed.min() >= 0.0
@@ -134,7 +141,7 @@ class TestDeepfakeDetector:
         """Test deepfake detection with no frames"""
         detector = DeepfakeDetector()
         result = detector.detect_from_frames([])
-        
+
         assert result is not None
         assert result.confidence == 0.0
         assert result.frame_count == 0
@@ -144,9 +151,9 @@ class TestDeepfakeDetector:
         """Test deepfake detection with single frame"""
         detector = DeepfakeDetector()
         frame = np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8)
-        
+
         result = detector.detect_from_frames([frame])
-        
+
         assert result is not None
         assert isinstance(result.is_deepfake, bool)
         assert 0.0 <= result.confidence <= 1.0
@@ -156,10 +163,12 @@ class TestDeepfakeDetector:
     def test_deepfake_detector_multiple_frames(self):
         """Test deepfake detection with multiple frames"""
         detector = DeepfakeDetector()
-        frames = [np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8) for _ in range(10)]
-        
+        frames = [
+            np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8) for _ in range(10)
+        ]
+
         result = detector.detect_from_frames(frames)
-        
+
         assert result is not None
         assert isinstance(result.is_deepfake, bool)
         assert 0.0 <= result.confidence <= 1.0
@@ -168,10 +177,12 @@ class TestDeepfakeDetector:
     def test_deepfake_detector_has_anomalies(self):
         """Test deepfake detector identifies anomalies"""
         detector = DeepfakeDetector()
-        frames = [np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8) for _ in range(10)]
-        
+        frames = [
+            np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8) for _ in range(10)
+        ]
+
         result = detector.detect_from_frames(frames)
-        
+
         assert isinstance(result.anomalies, list)
         # Anomalies field should exist (may be empty)
 
@@ -189,7 +200,7 @@ class TestLivenessDetector:
         """Test liveness detection with no frames"""
         detector = LivenessDetector()
         result = detector.detect_from_video_frames([])
-        
+
         assert result is not None
         assert result.confidence == 0.0
         assert result.frame_count == 0
@@ -199,9 +210,9 @@ class TestLivenessDetector:
         """Test liveness detection with single frame"""
         detector = LivenessDetector()
         frame = np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8)
-        
+
         result = detector.detect_from_video_frames([frame])
-        
+
         assert result is not None
         assert isinstance(result.is_alive, bool)
         assert 0.0 <= result.confidence <= 1.0
@@ -211,10 +222,12 @@ class TestLivenessDetector:
     def test_liveness_detector_multiple_frames(self):
         """Test liveness detection with multiple frames"""
         detector = LivenessDetector()
-        frames = [np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8) for _ in range(30)]
-        
+        frames = [
+            np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8) for _ in range(30)
+        ]
+
         result = detector.detect_from_video_frames(frames)
-        
+
         assert result is not None
         assert isinstance(result.is_alive, bool)
         assert 0.0 <= result.confidence <= 1.0
@@ -223,11 +236,13 @@ class TestLivenessDetector:
     def test_liveness_detector_consistency(self):
         """Test liveness detector returns consistent results"""
         detector = LivenessDetector()
-        frames = [np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8) for _ in range(10)]
-        
+        frames = [
+            np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8) for _ in range(10)
+        ]
+
         result1 = detector.detect_from_video_frames(frames)
         result2 = detector.detect_from_video_frames(frames)
-        
+
         # Results should be the same for same input
         assert result1.is_alive == result2.is_alive
         assert abs(result1.confidence - result2.confidence) < 0.01
@@ -240,15 +255,17 @@ class TestMLIntegration:
         """Test using both deepfake and liveness detectors"""
         deepfake_detector = DeepfakeDetector()
         liveness_detector = LivenessDetector()
-        
-        frames = [np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8) for _ in range(10)]
-        
+
+        frames = [
+            np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8) for _ in range(10)
+        ]
+
         deepfake_result = deepfake_detector.detect_from_frames(frames)
         liveness_result = liveness_detector.detect_from_video_frames(frames)
-        
+
         assert deepfake_result is not None
         assert liveness_result is not None
-        
+
         # Both should produce confidence scores
         assert 0.0 <= deepfake_result.confidence <= 1.0
         assert 0.0 <= liveness_result.confidence <= 1.0
@@ -256,17 +273,17 @@ class TestMLIntegration:
     def test_model_loading_with_cache(self):
         """Test model loading and caching"""
         loader = get_model_loader(cache_models=True)
-        
+
         # First load
         model1 = loader.load_model("deepfake_mobilenetv2")
-        
+
         # Check cache stats
         stats = loader.get_cache_stats()
         initial_count = stats["model_count"]
-        
+
         # Second load (should use cache)
         model2 = loader.load_model("deepfake_mobilenetv2")
-        
+
         # Both should be the same or both loaded
         assert model1 is not None or model2 is not None
 
@@ -277,7 +294,7 @@ class TestModelErrors:
     def test_deepfake_detector_handles_invalid_frames(self):
         """Test deepfake detector handles invalid frames"""
         detector = DeepfakeDetector()
-        
+
         # Try with None
         try:
             result = detector.detect_from_frames([None])
@@ -289,7 +306,7 @@ class TestModelErrors:
     def test_liveness_detector_handles_invalid_frames(self):
         """Test liveness detector handles invalid frames"""
         detector = LivenessDetector()
-        
+
         # Try with None
         try:
             result = detector.detect_from_video_frames([None])

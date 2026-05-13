@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 class RateLimitMiddleware(BaseHTTPMiddleware):
     """
     Rate limiting middleware using Redis
-    
+
     Configuration:
     - Global limit: 1000 requests per hour
     - Per-user limit: 100 requests per minute
@@ -39,14 +39,18 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         # Extract rate limit key
         rate_limit_key = self._get_rate_limit_key(request)
-        
+
         # Define limits by endpoint
         endpoint = request.url.path
         limit, window = self._get_limit_for_endpoint(endpoint)
 
         # Check rate limit
-        if not self.redis_manager.check_rate_limit(rate_limit_key, limit=limit, window_seconds=window):
-            status = self.redis_manager.get_rate_limit_status(rate_limit_key, limit=limit, window_seconds=window)
+        if not self.redis_manager.check_rate_limit(
+            rate_limit_key, limit=limit, window_seconds=window
+        ):
+            status = self.redis_manager.get_rate_limit_status(
+                rate_limit_key, limit=limit, window_seconds=window
+            )
             logger.warning(f"Rate limit exceeded for {rate_limit_key}")
             return JSONResponse(
                 status_code=429,
@@ -61,7 +65,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
 
         # Add rate limit headers to response
-        status = self.redis_manager.get_rate_limit_status(rate_limit_key, limit=limit, window_seconds=window)
+        status = self.redis_manager.get_rate_limit_status(
+            rate_limit_key, limit=limit, window_seconds=window
+        )
         response.headers["X-RateLimit-Limit"] = str(limit)
         response.headers["X-RateLimit-Remaining"] = str(status.get("remaining", 0))
         response.headers["X-RateLimit-Reset"] = status.get("reset_at", "")
@@ -71,7 +77,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     def _get_rate_limit_key(self, request: Request) -> str:
         """
         Generate rate limit key based on user and IP
-        
+
         Priority:
         1. Authenticated user ID
         2. Client IP address
@@ -91,7 +97,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     def _get_limit_for_endpoint(self, endpoint: str) -> tuple:
         """
         Get rate limit (requests, window_seconds) for specific endpoint
-        
+
         Returns:
             Tuple of (limit, window_seconds)
         """

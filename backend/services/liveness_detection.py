@@ -4,9 +4,9 @@ Detects whether a face in video is alive (not a photograph, video replay, or mas
 Uses pre-trained neural networks for robust liveness verification
 """
 
+import json
 import logging
 import os
-import json
 from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, List, Optional
@@ -14,7 +14,7 @@ from typing import Dict, List, Optional
 import cv2
 import numpy as np
 
-from backend.services.model_loader import get_model_loader, InferencePreprocessor
+from backend.services.model_loader import InferencePreprocessor, get_model_loader
 
 logger = logging.getLogger(__name__)
 
@@ -53,12 +53,12 @@ class LivenessDetector:
         self.min_confidence = self.config.get("confidence_threshold", 0.50)
         self.models_dir = self.config.get("models_dir", "ml_models/liveness_detection")
         self.model_config = {}
-        
+
         # Initialize model loader
         self.model_loader = get_model_loader(cache_models=True)
         self.model = None
         self.use_neural_network = False
-        
+
         # Load model metadata
         self._load_model_metadata()
         # Load pre-trained model
@@ -69,7 +69,7 @@ class LivenessDetector:
         try:
             config_path = os.path.join(self.models_dir, "liveness_config.json")
             if os.path.exists(config_path):
-                with open(config_path, 'r') as f:
+                with open(config_path, "r") as f:
                     self.model_config = json.load(f)
                 logger.info("Liveness model metadata loaded successfully")
             else:
@@ -83,11 +83,15 @@ class LivenessDetector:
             self.model = self.model_loader.load_model("liveness_mobilenet")
             if self.model is not None:
                 self.use_neural_network = True
-                logger.info("Neural network model loaded successfully for liveness detection")
+                logger.info(
+                    "Neural network model loaded successfully for liveness detection"
+                )
                 model_info = self.model_loader.get_model_info("liveness_mobilenet")
                 logger.info(f"Model info: {model_info}")
             else:
-                logger.warning("Failed to load neural network model, will use ensemble methods")
+                logger.warning(
+                    "Failed to load neural network model, will use ensemble methods"
+                )
                 self.use_neural_network = False
         except Exception as e:
             logger.warning(f"Could not load neural network model: {e}")
@@ -114,7 +118,7 @@ class LivenessDetector:
 
         try:
             scores = {}
-            
+
             # Method 1: Neural Network Inference (if available)
             if self.use_neural_network:
                 try:
@@ -173,60 +177,60 @@ class LivenessDetector:
     def _neural_network_inference(self, frames: List[np.ndarray]) -> float:
         """
         Perform neural network inference for liveness
-        
+
         Args:
             frames: List of video frames
-            
+
         Returns:
             Confidence score 0.0-1.0 (higher = more likely alive)
         """
         if not self.model or not self.use_neural_network:
             return 0.5
-        
+
         try:
             import tensorflow as tf
-            
+
             # Sample frames evenly (max 10 for efficiency)
             sample_size = min(10, len(frames))
             step = max(1, len(frames) // sample_size)
             sampled_frames = frames[::step][:sample_size]
-            
+
             # Preprocess frames
             batch = InferencePreprocessor.preprocess_frames(sampled_frames)
             if batch is None:
                 logger.warning("Frame preprocessing failed")
                 return 0.5
-            
+
             # Run inference
             predictions = self.model(tf.constant(batch), training=False)
-            
+
             # Extract liveness probability
             if isinstance(predictions, dict):
                 # Hub models may return dict
                 logits = predictions.get("logits", predictions)
             else:
                 logits = predictions
-            
+
             # Convert to numpy
             if hasattr(logits, "numpy"):
                 probs = logits.numpy()
             else:
                 probs = logits
-            
+
             # Assume last class is alive/real
             if probs.shape[-1] >= 2:
                 liveness_probs = probs[..., -1]  # Real/alive class
             else:
                 liveness_probs = probs[..., -1]
-            
+
             # Average across batch
             avg_score = float(np.mean(liveness_probs))
-            
+
             # Normalize to 0-1 range
             score = 1.0 / (1.0 + np.exp(-avg_score))  # Sigmoid normalization
-            
+
             return score
-            
+
         except Exception as e:
             logger.warning(f"Neural network inference error: {e}")
             return 0.5
@@ -242,16 +246,20 @@ class LivenessDetector:
             for i in range(min(len(frames) - 1, 10)):
                 frame = frames[i]
                 frame_gray = cv2.cvtColor(
-                    (frame * 255).astype(np.uint8) if frame.max() <= 1.0 else frame.astype(np.uint8),
-                    cv2.COLOR_BGR2GRAY
+                    (
+                        (frame * 255).astype(np.uint8)
+                        if frame.max() <= 1.0
+                        else frame.astype(np.uint8)
+                    ),
+                    cv2.COLOR_BGR2GRAY,
                 )
 
                 # Detect faces and eyes
                 faces = self.face_cascade.detectMultiScale(frame_gray, 1.3, 5)
-                for (x, y, w, h) in faces[:1]:  # Process first face
+                for x, y, w, h in faces[:1]:  # Process first face
                     roi_gray = frame_gray[y : y + h, x : x + w]
                     eyes = self.eye_cascade.detectMultiScale(roi_gray)
-                    
+
                     # If eyes detected, it's likely a real face
                     if len(eyes) >= 2:
                         blink_indicators.append(0.7)
@@ -287,12 +295,20 @@ class LivenessDetector:
 
                 # Convert to grayscale
                 frame1_gray = cv2.cvtColor(
-                    (frame1 * 255).astype(np.uint8) if frame1.max() <= 1.0 else frame1.astype(np.uint8),
-                    cv2.COLOR_BGR2GRAY
+                    (
+                        (frame1 * 255).astype(np.uint8)
+                        if frame1.max() <= 1.0
+                        else frame1.astype(np.uint8)
+                    ),
+                    cv2.COLOR_BGR2GRAY,
                 )
                 frame2_gray = cv2.cvtColor(
-                    (frame2 * 255).astype(np.uint8) if frame2.max() <= 1.0 else frame2.astype(np.uint8),
-                    cv2.COLOR_BGR2GRAY
+                    (
+                        (frame2 * 255).astype(np.uint8)
+                        if frame2.max() <= 1.0
+                        else frame2.astype(np.uint8)
+                    ),
+                    cv2.COLOR_BGR2GRAY,
                 )
 
                 # Calculate optical flow (simplified)
@@ -326,7 +342,11 @@ class LivenessDetector:
             freq_scores = []
 
             for frame in frames[:5]:
-                frame_bgr = (frame * 255).astype(np.uint8) if frame.max() <= 1.0 else frame.astype(np.uint8)
+                frame_bgr = (
+                    (frame * 255).astype(np.uint8)
+                    if frame.max() <= 1.0
+                    else frame.astype(np.uint8)
+                )
                 frame_gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
 
                 # Analyze frequency domain
@@ -335,9 +355,13 @@ class LivenessDetector:
 
                 # Real faces have natural frequency distribution
                 # Deepfakes and photos have different patterns
-                center_freq = magnitude[magnitude.shape[0]//2-10:magnitude.shape[0]//2+10,
-                                      magnitude.shape[1]//2-10:magnitude.shape[1]//2+10]
-                outer_freq = magnitude[:magnitude.shape[0]//4, :magnitude.shape[1]//4]
+                center_freq = magnitude[
+                    magnitude.shape[0] // 2 - 10 : magnitude.shape[0] // 2 + 10,
+                    magnitude.shape[1] // 2 - 10 : magnitude.shape[1] // 2 + 10,
+                ]
+                outer_freq = magnitude[
+                    : magnitude.shape[0] // 4, : magnitude.shape[1] // 4
+                ]
 
                 center_energy = np.sum(center_freq)
                 outer_energy = np.sum(outer_freq)
@@ -372,12 +396,16 @@ class LivenessDetector:
             rppg_scores = []
 
             for i in range(min(len(frames) - 5, 5)):
-                frame_segment = frames[i:i+5]
-                
+                frame_segment = frames[i : i + 5]
+
                 # Extract red channel (most prominent for rPPG)
                 green_means = []
                 for frame in frame_segment:
-                    frame_bgr = (frame * 255).astype(np.uint8) if frame.max() <= 1.0 else frame.astype(np.uint8)
+                    frame_bgr = (
+                        (frame * 255).astype(np.uint8)
+                        if frame.max() <= 1.0
+                        else frame.astype(np.uint8)
+                    )
                     green_channel = frame_bgr[:, :, 1]
                     green_means.append(np.mean(green_channel))
 
@@ -402,7 +430,9 @@ class LivenessDetector:
             logger.debug(f"rPPG detection failed: {e}")
             return 0.3
 
-    def detect_from_video(self, video_path: str, max_frames: int = 30) -> LivenessResult:
+    def detect_from_video(
+        self, video_path: str, max_frames: int = 30
+    ) -> LivenessResult:
         """
         Detect liveness from video file
 

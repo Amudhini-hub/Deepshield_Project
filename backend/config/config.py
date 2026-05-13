@@ -103,7 +103,7 @@ class Config:
     REDIS_DB = int(os.getenv("REDIS_DB", "0"))
     REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", None)
     REDIS_ENABLED = os.getenv("REDIS_ENABLED", "True").lower() == "true"
-    
+
     # Redis cache settings
     REDIS_CACHE_TTL_SECONDS = int(os.getenv("REDIS_CACHE_TTL_SECONDS", "3600"))
     REDIS_SESSION_TTL_HOURS = int(os.getenv("REDIS_SESSION_TTL_HOURS", "24"))

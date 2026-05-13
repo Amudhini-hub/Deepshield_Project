@@ -33,12 +33,9 @@ try:
     redis_port = getattr(config, "REDIS_PORT", 6379)
     redis_db = getattr(config, "REDIS_DB", 0)
     redis_password = getattr(config, "REDIS_PASSWORD", None)
-    
+
     redis_manager = get_redis_manager(
-        host=redis_host,
-        port=redis_port,
-        db=redis_db,
-        password=redis_password
+        host=redis_host, port=redis_port, db=redis_db, password=redis_password
     )
     if redis_manager.is_connected():
         logger.info("Redis initialized successfully")

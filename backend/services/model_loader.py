@@ -91,7 +91,7 @@ class MLModelLoader:
     def __init__(self, cache_models: bool = True):
         """
         Initialize model loader
-        
+
         Args:
             cache_models: Whether to cache models in Redis
         """
@@ -100,16 +100,14 @@ class MLModelLoader:
         self.loaded_models = {}  # In-memory cache
         self.model_info = {}  # Cache metadata
 
-    def load_model(
-        self, model_name: str, force_reload: bool = False
-    ) -> Optional[Any]:
+    def load_model(self, model_name: str, force_reload: bool = False) -> Optional[Any]:
         """
         Load a model with caching
-        
+
         Args:
             model_name: Model identifier
             force_reload: Force reload even if cached
-            
+
         Returns:
             Loaded model or None if failed
         """
@@ -139,7 +137,11 @@ class MLModelLoader:
             self.loaded_models[model_name] = model
 
             # Cache to Redis
-            if self.cache_models and self.redis_manager and self.redis_manager.is_connected():
+            if (
+                self.cache_models
+                and self.redis_manager
+                and self.redis_manager.is_connected()
+            ):
                 self._save_to_redis(model_name, model)
 
             logger.info(f"Model {model_name} loaded successfully and cached")
@@ -206,7 +208,11 @@ class MLModelLoader:
 
             if cached_data:
                 logger.info(f"Loading {model_name} from Redis cache")
-                return pickle.loads(cached_data.encode() if isinstance(cached_data, str) else cached_data)
+                return pickle.loads(
+                    cached_data.encode()
+                    if isinstance(cached_data, str)
+                    else cached_data
+                )
 
             return None
         except Exception as e:
@@ -232,7 +238,9 @@ class MLModelLoader:
                 "model_info": model_info,
             }
 
-            self.redis_manager.set_cache(cache_key, metadata, expires_in_seconds=86400)  # 24 hour TTL
+            self.redis_manager.set_cache(
+                cache_key, metadata, expires_in_seconds=86400
+            )  # 24 hour TTL
             logger.info(f"Model metadata for {model_name} cached in Redis")
             return True
         except Exception as e:
@@ -265,9 +273,7 @@ class MLModelLoader:
             "model_count": len(self.loaded_models),
             "cached_in_redis": self.cache_models,
             "redis_connected": (
-                self.redis_manager.is_connected()
-                if self.redis_manager
-                else False
+                self.redis_manager.is_connected() if self.redis_manager else False
             ),
             "model_info": self.model_info,
         }
@@ -280,11 +286,11 @@ class InferencePreprocessor:
     def preprocess_image(image, target_size: tuple = (224, 224)) -> Any:
         """
         Preprocess image for inference
-        
+
         Args:
             image: Input image (numpy array)
             target_size: Target size (height, width)
-            
+
         Returns:
             Preprocessed image
         """
@@ -310,11 +316,11 @@ class InferencePreprocessor:
     def preprocess_frames(frames: list, target_size: tuple = (224, 224)) -> Any:
         """
         Preprocess multiple frames for inference
-        
+
         Args:
             frames: List of frames
             target_size: Target size for each frame
-            
+
         Returns:
             Batch of preprocessed frames
         """

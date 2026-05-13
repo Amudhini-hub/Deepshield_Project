@@ -17,10 +17,16 @@ logger = logging.getLogger(__name__)
 class RedisManager:
     """Centralized Redis connection and operations manager"""
 
-    def __init__(self, host: str = "localhost", port: int = 6379, db: int = 0, password: str = None):
+    def __init__(
+        self,
+        host: str = "localhost",
+        port: int = 6379,
+        db: int = 0,
+        password: str = None,
+    ):
         """
         Initialize Redis connection pool
-        
+
         Args:
             host: Redis server host
             port: Redis server port
@@ -57,15 +63,17 @@ class RedisManager:
 
     # ============ SESSION MANAGEMENT ============
 
-    def create_session(self, user_id: str, session_data: Dict[str, Any], expires_in_hours: int = 24) -> str:
+    def create_session(
+        self, user_id: str, session_data: Dict[str, Any], expires_in_hours: int = 24
+    ) -> str:
         """
         Create a new session for a user
-        
+
         Args:
             user_id: User ID
             session_data: Session data to store
             expires_in_hours: Session expiration time in hours
-            
+
         Returns:
             Session ID
         """
@@ -80,14 +88,12 @@ class RedisManager:
                 "created_at": datetime.utcnow().isoformat(),
                 "data": session_data,
             }
-            
+
             ttl_seconds = expires_in_hours * 3600
             self.redis_client.setex(
-                session_id,
-                ttl_seconds,
-                json.dumps(session_payload)
+                session_id, ttl_seconds, json.dumps(session_payload)
             )
-            
+
             # Add to user sessions set for tracking
             self.redis_client.sadd(f"user_sessions:{user_id}", session_id)
             logger.info(f"Session created for user {user_id}: {session_id}")
@@ -99,10 +105,10 @@ class RedisManager:
     def get_session(self, session_id: str) -> Optional[Dict]:
         """
         Retrieve session data
-        
+
         Args:
             session_id: Session ID
-            
+
         Returns:
             Session data or None
         """
@@ -121,11 +127,11 @@ class RedisManager:
     def delete_session(self, session_id: str, user_id: str = None) -> bool:
         """
         Delete a session
-        
+
         Args:
             session_id: Session ID
             user_id: Optional user ID for cleanup
-            
+
         Returns:
             Success status
         """
@@ -145,10 +151,10 @@ class RedisManager:
     def delete_user_sessions(self, user_id: str) -> int:
         """
         Delete all sessions for a user (logout all devices)
-        
+
         Args:
             user_id: User ID
-            
+
         Returns:
             Number of sessions deleted
         """
@@ -169,15 +175,17 @@ class RedisManager:
 
     # ============ RATE LIMITING ============
 
-    def check_rate_limit(self, key: str, limit: int = 100, window_seconds: int = 60) -> bool:
+    def check_rate_limit(
+        self, key: str, limit: int = 100, window_seconds: int = 60
+    ) -> bool:
         """
         Check if a request exceeds rate limit
-        
+
         Args:
             key: Rate limit key (e.g., "rate_limit:user_id:endpoint")
             limit: Max requests allowed
             window_seconds: Time window in seconds
-            
+
         Returns:
             True if request is allowed, False if limit exceeded
         """
@@ -193,15 +201,17 @@ class RedisManager:
             logger.error(f"Error checking rate limit: {e}")
             return True  # Allow on error
 
-    def get_rate_limit_status(self, key: str, limit: int = 100, window_seconds: int = 60) -> Dict[str, Any]:
+    def get_rate_limit_status(
+        self, key: str, limit: int = 100, window_seconds: int = 60
+    ) -> Dict[str, Any]:
         """
         Get rate limit status for a key
-        
+
         Args:
             key: Rate limit key
             limit: Max requests allowed
             window_seconds: Time window in seconds
-            
+
         Returns:
             Dictionary with remaining, limit, and reset_at
         """
@@ -212,12 +222,12 @@ class RedisManager:
             current = self.redis_client.get(key)
             current = int(current) if current else 0
             ttl = self.redis_client.ttl(key)
-            
+
             remaining = max(0, limit - current)
             reset_at = None
             if ttl > 0:
                 reset_at = (datetime.utcnow() + timedelta(seconds=ttl)).isoformat()
-            
+
             return {
                 "remaining": remaining,
                 "limit": limit,
@@ -233,11 +243,11 @@ class RedisManager:
     def blacklist_token(self, token: str, expires_in_seconds: int = 3600) -> bool:
         """
         Add token to blacklist (for logout)
-        
+
         Args:
             token: Token to blacklist
             expires_in_seconds: TTL in seconds
-            
+
         Returns:
             Success status
         """
@@ -256,10 +266,10 @@ class RedisManager:
     def is_token_blacklisted(self, token: str) -> bool:
         """
         Check if token is blacklisted
-        
+
         Args:
             token: Token to check
-            
+
         Returns:
             True if blacklisted, False otherwise
         """
@@ -278,12 +288,12 @@ class RedisManager:
     def set_cache(self, key: str, value: Any, expires_in_seconds: int = 3600) -> bool:
         """
         Set a cache value
-        
+
         Args:
             key: Cache key
             value: Value to cache (will be JSON serialized)
             expires_in_seconds: TTL in seconds
-            
+
         Returns:
             Success status
         """
@@ -302,10 +312,10 @@ class RedisManager:
     def get_cache(self, key: str) -> Optional[Any]:
         """
         Get a cache value
-        
+
         Args:
             key: Cache key
-            
+
         Returns:
             Cached value or None
         """
@@ -327,10 +337,10 @@ class RedisManager:
     def delete_cache(self, key: str) -> bool:
         """
         Delete a cache value
-        
+
         Args:
             key: Cache key
-            
+
         Returns:
             Success status
         """
@@ -347,10 +357,10 @@ class RedisManager:
     def clear_cache_pattern(self, pattern: str) -> int:
         """
         Clear all cache keys matching a pattern
-        
+
         Args:
             pattern: Redis pattern (e.g., "cache:user:*")
-            
+
         Returns:
             Number of keys deleted
         """
@@ -373,7 +383,7 @@ class RedisManager:
     def get_redis_stats(self) -> Dict[str, Any]:
         """
         Get Redis server statistics
-        
+
         Returns:
             Dictionary with Redis stats
         """
@@ -397,10 +407,10 @@ class RedisManager:
     def get_session_count(self, user_id: str = None) -> int:
         """
         Get number of active sessions
-        
+
         Args:
             user_id: Optional user ID for specific user's sessions
-            
+
         Returns:
             Number of sessions
         """
@@ -422,7 +432,9 @@ class RedisManager:
 _redis_manager = None
 
 
-def get_redis_manager(host: str = "localhost", port: int = 6379, db: int = 0, password: str = None) -> RedisManager:
+def get_redis_manager(
+    host: str = "localhost", port: int = 6379, db: int = 0, password: str = None
+) -> RedisManager:
     """Get or create Redis manager singleton"""
     global _redis_manager
     if _redis_manager is None:

@@ -5,7 +5,7 @@ Handles loading, initialization, and caching of ML models
 
 import logging
 import os
-from typing import Dict, Optional, Any
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -69,16 +69,12 @@ class ModelTrainer:
     """Utilities for training ML models"""
 
     @staticmethod
-    def compile_deepfake_model(
-        model: Any, learning_rate: float = 0.001
-    ) -> None:
+    def compile_deepfake_model(model: Any, learning_rate: float = 0.001) -> None:
         """Compile deepfake detection model"""
         logger.info(f"Model configured with learning_rate={learning_rate}")
 
     @staticmethod
-    def compile_liveness_model(
-        model: Any, learning_rate: float = 0.001
-    ) -> None:
+    def compile_liveness_model(model: Any, learning_rate: float = 0.001) -> None:
         """Compile liveness detection model"""
         logger.info(f"Model configured with learning_rate={learning_rate}")
 

@@ -4,9 +4,9 @@ Detects AI-generated or manipulated facial videos using neural networks + ensemb
 Uses pre-trained models from TensorFlow Hub for real-world accuracy
 """
 
+import json
 import logging
 import os
-import json
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
@@ -14,7 +14,7 @@ import cv2
 import numpy as np
 from scipy import fftpack
 
-from backend.services.model_loader import get_model_loader, InferencePreprocessor
+from backend.services.model_loader import InferencePreprocessor, get_model_loader
 
 logger = logging.getLogger(__name__)
 
@@ -39,12 +39,12 @@ class DeepfakeDetector:
         self.detection_threshold = self.config.get("detection_threshold", 0.8)
         self.models_dir = self.config.get("models_dir", "ml_models/deepfake_detection")
         self.model_config = {}
-        
+
         # Initialize model loader
         self.model_loader = get_model_loader(cache_models=True)
         self.model = None
         self.use_neural_network = False
-        
+
         # Load model metadata
         self._load_model_metadata()
         # Load pre-trained model
@@ -55,7 +55,7 @@ class DeepfakeDetector:
         try:
             config_path = os.path.join(self.models_dir, "mesonet_config.json")
             if os.path.exists(config_path):
-                with open(config_path, 'r') as f:
+                with open(config_path, "r") as f:
                     self.model_config = json.load(f)
                 logger.info("Deepfake model metadata loaded successfully")
             else:
@@ -69,11 +69,15 @@ class DeepfakeDetector:
             self.model = self.model_loader.load_model("deepfake_mobilenetv2")
             if self.model is not None:
                 self.use_neural_network = True
-                logger.info("Neural network model loaded successfully for deepfake detection")
+                logger.info(
+                    "Neural network model loaded successfully for deepfake detection"
+                )
                 model_info = self.model_loader.get_model_info("deepfake_mobilenetv2")
                 logger.info(f"Model info: {model_info}")
             else:
-                logger.warning("Failed to load neural network model, will use ensemble methods")
+                logger.warning(
+                    "Failed to load neural network model, will use ensemble methods"
+                )
                 self.use_neural_network = False
         except Exception as e:
             logger.warning(f"Could not load neural network model: {e}")
@@ -109,7 +113,7 @@ class DeepfakeDetector:
         # Initialize scores
         scores = {}
         anomalies = []
-        
+
         # Method 1: Neural Network Inference (if available)
         if self.use_neural_network:
             try:
@@ -129,7 +133,7 @@ class DeepfakeDetector:
         artifact_score = self._detect_compression_artifacts(normalized_frames)
         blend_score = self._detect_blend_artifacts(normalized_frames)
         consistency_score = self._detect_face_consistency(normalized_frames)
-        
+
         # Weighted ensemble combination
         scores["frequency"] = freq_score * 0.15  # 15% weight
         scores["artifacts"] = artifact_score * 0.15  # 15% weight
@@ -172,33 +176,33 @@ class DeepfakeDetector:
     def _neural_network_inference(self, frames: List[np.ndarray]) -> float:
         """
         Perform neural network inference on frames
-        
+
         Args:
             frames: Normalized frames
-            
+
         Returns:
             Confidence score 0.0-1.0 (higher = more likely deepfake)
         """
         if not self.model or not self.use_neural_network:
             return 0.5
-        
+
         try:
             import tensorflow as tf
-            
+
             # Sample frames evenly (max 10 for efficiency)
             sample_size = min(10, len(frames))
             step = max(1, len(frames) // sample_size)
             sampled_frames = frames[::step][:sample_size]
-            
+
             # Preprocess frames
             batch = InferencePreprocessor.preprocess_frames(sampled_frames)
             if batch is None:
                 logger.warning("Frame preprocessing failed")
                 return 0.5
-            
+
             # Run inference
             predictions = self.model(tf.constant(batch), training=False)
-            
+
             # Extract deepfake probability
             # Assuming output shape is (batch_size, 2) with [fake_prob, real_prob]
             if isinstance(predictions, dict):
@@ -206,27 +210,27 @@ class DeepfakeDetector:
                 logits = predictions.get("logits", predictions)
             else:
                 logits = predictions
-            
+
             # Convert to numpy and get fake probability
             if hasattr(logits, "numpy"):
                 probs = logits.numpy()
             else:
                 probs = logits
-            
+
             # Assume first class is fake/deepfake
             if probs.shape[-1] >= 2:
                 deepfake_probs = probs[..., 0]
             else:
                 deepfake_probs = probs[..., -1]
-            
+
             # Average across batch
             avg_score = float(np.mean(deepfake_probs))
-            
+
             # Normalize to 0-1 range
             score = 1.0 / (1.0 + np.exp(-avg_score))  # Sigmoid normalization
-            
+
             return score
-            
+
         except Exception as e:
             logger.warning(f"Neural network inference error: {e}")
             return 0.5
@@ -250,7 +254,11 @@ class DeepfakeDetector:
             for frame in frames[:5]:  # Analyze first 5 frames
                 if frame.ndim == 3 and frame.shape[2] >= 3:
                     # Convert to grayscale
-                    frame_bgr = (frame * 255).astype(np.uint8) if frame.max() <= 1.0 else frame.astype(np.uint8)
+                    frame_bgr = (
+                        (frame * 255).astype(np.uint8)
+                        if frame.max() <= 1.0
+                        else frame.astype(np.uint8)
+                    )
                     frame_gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
                 else:
                     frame_gray = frame
@@ -258,10 +266,12 @@ class DeepfakeDetector:
                 # FFT analysis
                 fft_result = fftpack.fft2(frame_gray)
                 magnitude = np.abs(fft_result)
-                
+
                 # Detect unnatural frequency patterns
-                high_freq_ratio = np.sum(magnitude > np.percentile(magnitude, 90)) / magnitude.size
-                
+                high_freq_ratio = (
+                    np.sum(magnitude > np.percentile(magnitude, 90)) / magnitude.size
+                )
+
                 if high_freq_ratio > 0.15:  # Threshold for anomaly
                     anomaly_count += 1
 
@@ -283,12 +293,18 @@ class DeepfakeDetector:
             artifact_count = 0
             for frame in frames[:5]:
                 if frame.ndim == 3 and frame.shape[2] >= 3:
-                    frame_bgr = (frame * 255).astype(np.uint8) if frame.max() <= 1.0 else frame.astype(np.uint8)
-                    
+                    frame_bgr = (
+                        (frame * 255).astype(np.uint8)
+                        if frame.max() <= 1.0
+                        else frame.astype(np.uint8)
+                    )
+
                     # Detect edge anomalies (common in deepfakes)
-                    edges = cv2.Canny(cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY), 50, 150)
+                    edges = cv2.Canny(
+                        cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY), 50, 150
+                    )
                     edge_density = np.sum(edges > 0) / edges.size
-                    
+
                     if edge_density > 0.3:  # Threshold
                         artifact_count += 1
 
@@ -311,13 +327,17 @@ class DeepfakeDetector:
             for frame in frames[:5]:
                 if frame.ndim == 3 and frame.shape[2] >= 3:
                     # Analyze color transitions
-                    frame_bgr = (frame * 255).astype(np.uint8) if frame.max() <= 1.0 else frame.astype(np.uint8)
+                    frame_bgr = (
+                        (frame * 255).astype(np.uint8)
+                        if frame.max() <= 1.0
+                        else frame.astype(np.uint8)
+                    )
                     hsv = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
-                    
+
                     # Detect unnatural color gradients
                     v_channel = hsv[:, :, 2].astype(np.float32)
                     edges = cv2.Sobel(v_channel, cv2.CV_32F, 1, 0, ksize=3)
-                    
+
                     if np.std(edges) > 30:
                         blend_count += 1
 
@@ -337,7 +357,7 @@ class DeepfakeDetector:
 
         try:
             inconsistencies = 0
-            
+
             for i in range(min(len(frames) - 1, 5)):
                 frame1 = frames[i]
                 frame2 = frames[i + 1]
@@ -347,8 +367,8 @@ class DeepfakeDetector:
 
                 # Calculate structural similarity
                 diff = np.abs(frame1.astype(np.float32) - frame2.astype(np.float32))
-                mse = np.mean(diff ** 2)
-                
+                mse = np.mean(diff**2)
+
                 # Deepfakes often have unnatural frame-to-frame changes
                 if mse > 0.05:  # Threshold for inconsistency
                     inconsistencies += 1
@@ -359,7 +379,9 @@ class DeepfakeDetector:
             logger.debug(f"Consistency detection failed: {e}")
             return 0.5
 
-    def detect_from_video(self, video_path: str, max_frames: int = 30) -> DeepfakeResult:
+    def detect_from_video(
+        self, video_path: str, max_frames: int = 30
+    ) -> DeepfakeResult:
         """
         Detect deepfakes from video file
 

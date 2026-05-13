@@ -102,6 +102,7 @@ def get_current_user(
 
     # Check if token is blacklisted (Redis or in-memory fallback)
     from backend.services.authentication import is_token_blacklisted
+
     if is_token_blacklisted(token) or token in TOKEN_BLACKLIST:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -325,10 +326,11 @@ async def logout_user(
         # Blacklist the token using Redis
         if token:
             from backend.services.authentication import blacklist_token
+
             blacklist_token(token)
             # Also add to in-memory fallback
             TOKEN_BLACKLIST.add(token)
-        
+
         crud.create_audit_log(
             db,
             str(current_user.id),
@@ -577,8 +579,13 @@ async def assess_risk(payload: RiskAssessmentRequest) -> RiskAssessmentResponse:
 
 
 ALLOWED_VIDEO_TYPES = {
-    "video/mp4", "video/webm", "video/avi", "video/quicktime",
-    "video/x-msvideo", "video/x-matroska", "application/octet-stream",
+    "video/mp4",
+    "video/webm",
+    "video/avi",
+    "video/quicktime",
+    "video/x-msvideo",
+    "video/x-matroska",
+    "application/octet-stream",
 }
 MAX_VIDEO_SIZE_BYTES = 50 * 1024 * 1024  # 50 MB
 MIN_FRAMES_REQUIRED = 5
@@ -701,7 +708,9 @@ async def detect_deepfake(
             },
         )
 
-        logger.info(f"Deepfake detection for user {current_user.id}: is_deepfake={result.is_deepfake} confidence={result.confidence:.3f}")
+        logger.info(
+            f"Deepfake detection for user {current_user.id}: is_deepfake={result.is_deepfake} confidence={result.confidence:.3f}"
+        )
         return {
             "user_id": current_user.id,
             "is_deepfake": result.is_deepfake,
@@ -790,7 +799,9 @@ async def detect_liveness(
             },
         )
 
-        logger.info(f"Liveness detection for user {current_user.id}: is_alive={result.is_alive} confidence={result.confidence:.3f}")
+        logger.info(
+            f"Liveness detection for user {current_user.id}: is_alive={result.is_alive} confidence={result.confidence:.3f}"
+        )
         return {
             "user_id": current_user.id,
             "is_alive": result.is_alive,
@@ -849,10 +860,10 @@ async def health() -> dict:
 async def detailed_health_status() -> dict:
     """Get detailed health status of all services."""
     from backend.redis_manager import get_redis_manager
-    
+
     redis_manager = get_redis_manager()
     redis_stats = redis_manager.get_redis_stats()
-    
+
     return {
         "timestamp": datetime.utcnow().isoformat(),
         "service": "deepshield",
@@ -872,15 +883,15 @@ async def detailed_health_status() -> dict:
     "/metrics/redis",
     status_code=status.HTTP_200_OK,
     summary="Redis metrics",
-    tags=["monitoring"]
+    tags=["monitoring"],
 )
 async def redis_metrics(current_user: User = Depends(get_current_user)) -> dict:
     """Get Redis server metrics (requires authentication)."""
     from backend.redis_manager import get_redis_manager
-    
+
     redis_manager = get_redis_manager()
     stats = redis_manager.get_redis_stats()
-    
+
     return {
         "timestamp": datetime.utcnow().isoformat(),
         "redis": stats,

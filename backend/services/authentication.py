@@ -59,7 +59,10 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
                 return key.hex() == stored_key
         return False
 
+
 from typing import Optional
+
+
 def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
     """Create JWT access token"""
     to_encode = data.copy()
@@ -124,17 +127,20 @@ def decode_refresh_token(token: str) -> Optional[Dict]:
 def blacklist_token(token: str) -> bool:
     """
     Add token to Redis blacklist (for logout)
-    
+
     Args:
         token: JWT token to blacklist
-        
+
     Returns:
         Success status
     """
     try:
         from backend.redis_manager import get_redis_manager
+
         redis_manager = get_redis_manager()
-        payload = jwt.decode(token, config.SECRET_KEY, algorithms=[config.JWT_ALGORITHM])
+        payload = jwt.decode(
+            token, config.SECRET_KEY, algorithms=[config.JWT_ALGORITHM]
+        )
         # Calculate remaining TTL based on exp claim
         exp_timestamp = payload.get("exp", 0)
         now_timestamp = datetime.utcnow().timestamp()
@@ -142,6 +148,7 @@ def blacklist_token(token: str) -> bool:
         return redis_manager.blacklist_token(token, expires_in_seconds=ttl)
     except Exception as e:
         import logging
+
         logger = logging.getLogger(__name__)
         logger.error(f"Error blacklisting token: {e}")
         return False
@@ -150,15 +157,16 @@ def blacklist_token(token: str) -> bool:
 def is_token_blacklisted(token: str) -> bool:
     """
     Check if token is blacklisted
-    
+
     Args:
         token: JWT token to check
-        
+
     Returns:
         True if blacklisted, False otherwise
     """
     try:
         from backend.redis_manager import get_redis_manager
+
         redis_manager = get_redis_manager()
         return redis_manager.is_token_blacklisted(token)
     except Exception:
