@@ -24,7 +24,7 @@ except ImportError:
 import backend.crud as crud
 from backend.config.config import get_config
 from backend.crud import rebuild_behavioral_profile
-from backend.database import get_db
+from backend.database import get_db, health_check
 from backend.models import User
 from backend.schemas import (
     BaselineCreateRequest,
