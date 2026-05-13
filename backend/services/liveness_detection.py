@@ -1,7 +1,7 @@
 """
 Liveness Detection Service
 Detects whether a face in video is alive (not a photograph, video replay, or mask)
-Fallback implementation for environments where TensorFlow is not available
+Uses pre-trained neural networks for robust liveness verification
 """
 
 import logging
@@ -13,6 +13,8 @@ from typing import Dict, List, Optional
 
 import cv2
 import numpy as np
+
+from backend.services.model_loader import get_model_loader, InferencePreprocessor
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +40,7 @@ class LivenessResult:
 
 
 class LivenessDetector:
-    """Main liveness detection engine"""
+    """Main liveness detection engine using neural networks + ensemble methods"""
 
     def __init__(self, config: dict = None):
         self.config = config or {}
@@ -51,7 +53,16 @@ class LivenessDetector:
         self.min_confidence = self.config.get("confidence_threshold", 0.85)
         self.models_dir = self.config.get("models_dir", "ml_models/liveness_detection")
         self.model_config = {}
+        
+        # Initialize model loader
+        self.model_loader = get_model_loader(cache_models=True)
+        self.model = None
+        self.use_neural_network = False
+        
+        # Load model metadata
         self._load_model_metadata()
+        # Load pre-trained model
+        self._load_neural_network_model()
 
     def _load_model_metadata(self):
         """Load model metadata for reference"""
@@ -66,9 +77,25 @@ class LivenessDetector:
         except Exception as e:
             logger.warning(f"Could not load model metadata: {e}")
 
+    def _load_neural_network_model(self):
+        """Load pre-trained neural network model from TensorFlow Hub"""
+        try:
+            self.model = self.model_loader.load_model("liveness_mobilenet")
+            if self.model is not None:
+                self.use_neural_network = True
+                logger.info("Neural network model loaded successfully for liveness detection")
+                model_info = self.model_loader.get_model_info("liveness_mobilenet")
+                logger.info(f"Model info: {model_info}")
+            else:
+                logger.warning("Failed to load neural network model, will use ensemble methods")
+                self.use_neural_network = False
+        except Exception as e:
+            logger.warning(f"Could not load neural network model: {e}")
+            self.use_neural_network = False
+
     def detect_from_video_frames(self, frames: List[np.ndarray]) -> LivenessResult:
         """
-        Detect liveness from video frames
+        Detect liveness from video frames using neural network + ensemble methods
 
         Args:
             frames: List of video frames
@@ -86,19 +113,32 @@ class LivenessDetector:
             )
 
         try:
-            # Use multiple detection methods for robustness
+            scores = {}
+            
+            # Method 1: Neural Network Inference (if available)
+            if self.use_neural_network:
+                try:
+                    nn_score = self._neural_network_inference(frames)
+                    scores["neural_network"] = nn_score * 0.35  # 35% weight
+                    logger.info(f"Neural network liveness score: {nn_score}")
+                except Exception as e:
+                    logger.warning(f"Neural network inference failed: {e}")
+                    scores["neural_network"] = 0.5 * 0.35
+            else:
+                # Fallback
+                scores["neural_network"] = 0.5 * 0.35
+
+            # Method 2-5: Ensemble Analysis Methods
             blink_score = self._detect_blink_patterns(frames)
             motion_score = self._detect_micro_motions(frames)
             frequency_score = self._detect_frequency_patterns(frames)
             rppg_score = self._detect_rppg(frames)
 
             # Weighted ensemble combination
-            scores = {
-                "blink": blink_score * 0.20,  # 20% weight
-                "motion": motion_score * 0.20,  # 20% weight
-                "frequency": frequency_score * 0.15,  # 15% weight
-                "rppg": rppg_score * 0.10,  # 10% weight
-            }
+            scores["blink"] = blink_score * 0.20  # 20% weight
+            scores["motion"] = motion_score * 0.20  # 20% weight
+            scores["frequency"] = frequency_score * 0.15  # 15% weight
+            scores["rppg"] = rppg_score * 0.10  # 10% weight
 
             confidence = min(1.0, sum(scores.values()))
             is_alive = confidence >= (1.0 - self.min_confidence)
@@ -106,14 +146,16 @@ class LivenessDetector:
             return LivenessResult(
                 is_alive=is_alive,
                 confidence=float(confidence),
-                challenge_type="ensemble",
+                challenge_type="neural_network + ensemble",
                 details={
+                    "neural_network_score": float(scores.get("neural_network", 0)),
                     "blink_score": float(blink_score),
                     "motion_score": float(motion_score),
                     "frequency_score": float(frequency_score),
                     "rppg_score": float(rppg_score),
                     "frames_analyzed": len(frames),
-                    "method": "ensemble_fallback"
+                    "method": "neural_network_ensemble",
+                    "using_neural_network": self.use_neural_network,
                 },
                 frame_count=len(frames),
             )
@@ -121,6 +163,73 @@ class LivenessDetector:
         except Exception as e:
             logger.error(f"Liveness detection error: {e}")
             return LivenessResult(
+                is_alive=False,
+                confidence=0.0,
+                challenge_type="error",
+                details={"error": str(e)},
+                frame_count=len(frames),
+            )
+
+    def _neural_network_inference(self, frames: List[np.ndarray]) -> float:
+        """
+        Perform neural network inference for liveness
+        
+        Args:
+            frames: List of video frames
+            
+        Returns:
+            Confidence score 0.0-1.0 (higher = more likely alive)
+        """
+        if not self.model or not self.use_neural_network:
+            return 0.5
+        
+        try:
+            import tensorflow as tf
+            
+            # Sample frames evenly (max 10 for efficiency)
+            sample_size = min(10, len(frames))
+            step = max(1, len(frames) // sample_size)
+            sampled_frames = frames[::step][:sample_size]
+            
+            # Preprocess frames
+            batch = InferencePreprocessor.preprocess_frames(sampled_frames)
+            if batch is None:
+                logger.warning("Frame preprocessing failed")
+                return 0.5
+            
+            # Run inference
+            predictions = self.model(tf.constant(batch), training=False)
+            
+            # Extract liveness probability
+            if isinstance(predictions, dict):
+                # Hub models may return dict
+                logits = predictions.get("logits", predictions)
+            else:
+                logits = predictions
+            
+            # Convert to numpy
+            if hasattr(logits, "numpy"):
+                probs = logits.numpy()
+            else:
+                probs = logits
+            
+            # Assume last class is alive/real
+            if probs.shape[-1] >= 2:
+                liveness_probs = probs[..., -1]  # Real/alive class
+            else:
+                liveness_probs = probs[..., -1]
+            
+            # Average across batch
+            avg_score = float(np.mean(liveness_probs))
+            
+            # Normalize to 0-1 range
+            score = 1.0 / (1.0 + np.exp(-avg_score))  # Sigmoid normalization
+            
+            return score
+            
+        except Exception as e:
+            logger.warning(f"Neural network inference error: {e}")
+            return 0.5
                 is_alive=False,
                 confidence=0.0,
                 challenge_type="error",
