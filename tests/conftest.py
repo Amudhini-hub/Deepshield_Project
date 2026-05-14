@@ -12,8 +12,8 @@ test_db = Path("test.db")
 if test_db.exists():
     test_db.unlink()
 
-# Set test environment
-os.environ.setdefault("PYTEST_RUNNING", "true")
+# Set test environment — must happen before any backend imports
+os.environ["PYTEST_RUNNING"] = "true"  # disables rate limiting middleware
 os.environ.setdefault("USE_SQLITE_RUNTIME", "true")
 os.environ.setdefault("SECRET_KEY", "test-secret-key")
 os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
@@ -56,3 +56,14 @@ def setup_database():
         except (PermissionError, OSError):
             # Ignore errors if file is still in use
             pass
+
+
+@pytest.fixture
+def client():
+    """HTTP test client for API tests that need it as a fixture parameter."""
+    from fastapi.testclient import TestClient
+
+    from backend.main import app
+
+    with TestClient(app) as c:
+        yield c

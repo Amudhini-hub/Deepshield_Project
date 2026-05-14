@@ -145,7 +145,7 @@ class LivenessDetector:
             scores["rppg"] = rppg_score * 0.10  # 10% weight
 
             confidence = min(1.0, sum(scores.values()))
-            is_alive = confidence >= self.min_confidence
+            is_alive = bool(confidence >= self.min_confidence)
 
             return LivenessResult(
                 is_alive=is_alive,

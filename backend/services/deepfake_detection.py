@@ -152,7 +152,7 @@ class DeepfakeDetector:
         if consistency_score > 0.7:
             anomalies.append("Face consistency anomalies detected")
 
-        is_deepfake = confidence >= self.detection_threshold
+        is_deepfake = bool(confidence >= self.detection_threshold)
 
         return DeepfakeResult(
             is_deepfake=is_deepfake,
