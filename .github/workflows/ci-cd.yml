@@ -53,6 +53,7 @@ jobs:
 
     - name: Run tests
       env:
+        PYTEST_RUNNING: "true"
         USE_SQLITE_RUNTIME: "true"
         SECRET_KEY: "test-secret-key-for-ci"
         DATABASE_URL: "sqlite:///./test.db"
@@ -143,17 +144,27 @@ jobs:
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: us-east-1
+        aws-region: ${{ secrets.AWS_REGION }}
 
-    - name: Deploy to staging
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+
+    - name: Build and push Docker image to staging
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        IMAGE_TAG: staging
       run: |
-        # Build and push Docker image
-        docker build -t deepshield:staging .
-        docker tag deepshield:staging ${{ secrets.ECR_REGISTRY }}/deepshield:staging
-        docker push ${{ secrets.ECR_REGISTRY }}/deepshield:staging
+        docker build -t $ECR_REGISTRY/${{ secrets.ECR_REPOSITORY }}:$IMAGE_TAG .
+        docker push $ECR_REGISTRY/${{ secrets.ECR_REPOSITORY }}:$IMAGE_TAG
 
-        # Deploy to ECS/EKS or your staging environment
-        echo "Deploying to staging environment..."
+    - name: Deploy to staging ECS
+      run: |
+        aws ecs update-service \
+          --cluster ${{ secrets.ECS_CLUSTER }} \
+          --service ${{ secrets.ECS_SERVICE }} \
+          --force-new-deployment \
+          --region ${{ secrets.AWS_REGION }}
 
   deploy-production:
     runs-on: ubuntu-latest
@@ -169,19 +180,30 @@ jobs:
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: us-east-1
+        aws-region: ${{ secrets.AWS_REGION }}
 
-    - name: Deploy to production
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+
+    - name: Build and push Docker image
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        IMAGE_TAG: latest
       run: |
-        # Build and push Docker image
-        docker build -t deepshield:latest .
-        docker tag deepshield:latest ${{ secrets.ECR_REGISTRY }}/deepshield:latest
-        docker push ${{ secrets.ECR_REGISTRY }}/deepshield:latest
+        docker build -t $ECR_REGISTRY/${{ secrets.ECR_REPOSITORY }}:$IMAGE_TAG .
+        docker push $ECR_REGISTRY/${{ secrets.ECR_REPOSITORY }}:$IMAGE_TAG
 
-        # Deploy to ECS/EKS or your production environment
-        echo "Deploying to production environment..."
+    - name: Deploy to ECS
+      run: |
+        aws ecs update-service \
+          --cluster ${{ secrets.ECS_CLUSTER }} \
+          --service ${{ secrets.ECS_SERVICE }} \
+          --force-new-deployment \
+          --region ${{ secrets.AWS_REGION }}
 
-        # Run smoke tests
+    - name: Run smoke tests
+      run: |
         echo "Running production smoke tests..."
 
   notify:
@@ -194,10 +216,8 @@ jobs:
       if: failure()
       run: |
         echo "Pipeline failed - sending notification..."
-        # Add your notification logic here (Slack, email, etc.)
 
     - name: Notify on success
       if: success()
       run: |
         echo "Pipeline succeeded - sending notification..."
-        # Add your notification logic here (Slack, email, etc.)
