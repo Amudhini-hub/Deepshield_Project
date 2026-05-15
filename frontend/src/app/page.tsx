@@ -42,7 +42,7 @@ function BtnPrimary({
   size?: "md" | "lg";
 }) {
   const px = size === "lg" ? "2rem" : "1.25rem";
-  const py = size === "lg" ? "0.75rem" : "0.5rem";
+  const py = size === "lg" ? "0.75rem" : "0.625rem";
   const fs = size === "lg" ? "1rem" : "0.875rem";
   return (
     <Link href={href}>
@@ -56,6 +56,7 @@ function BtnPrimary({
           fontSize: fs,
           fontWeight: 500,
           cursor: "pointer",
+          minHeight: 44,
         }}
         onMouseOver={(e) => (e.currentTarget.style.background = C.primaryDark)}
         onMouseOut={(e) => (e.currentTarget.style.background = C.primary)}
@@ -76,7 +77,7 @@ function BtnOutline({
   size?: "md" | "lg";
 }) {
   const px = size === "lg" ? "2rem" : "1.25rem";
-  const py = size === "lg" ? "0.75rem" : "0.5rem";
+  const py = size === "lg" ? "0.75rem" : "0.625rem";
   const fs = size === "lg" ? "1rem" : "0.875rem";
   return (
     <Link href={href}>
@@ -90,6 +91,7 @@ function BtnOutline({
           fontSize: fs,
           fontWeight: 500,
           cursor: "pointer",
+          minHeight: 44,
         }}
         onMouseOver={(e) => (e.currentTarget.style.background = C.primaryLight)}
         onMouseOut={(e) => (e.currentTarget.style.background = C.card)}
@@ -134,7 +136,7 @@ export default function HomePage() {
 
         <h1
           style={{
-            fontSize: 52,
+            fontSize: "clamp(32px, 7vw, 52px)",
             fontWeight: 700,
             lineHeight: 1.15,
             color: C.heading,
@@ -182,13 +184,13 @@ export default function HomePage() {
           { num: "<800ms", label: "Detection response time" },
           { num: "98.7%", label: "Liveness verification" },
           { num: "5 lines", label: "To integrate" },
-        ].map((s, i, arr) => (
+        ].map((s) => (
           <div
             key={s.label}
             style={{
               padding: "1.5rem",
               textAlign: "center",
-              borderRight: i < arr.length - 1 ? `0.5px solid ${C.border}` : "none",
+              borderRight: `0.5px solid ${C.border}`,
             }}
           >
             <div style={{ fontSize: 26, fontWeight: 700, color: C.primary }}>{s.num}</div>

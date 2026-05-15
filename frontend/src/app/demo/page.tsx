@@ -419,6 +419,7 @@ export default function DemoPage() {
                   fontSize: 16,
                   fontWeight: 600,
                   cursor: phase === "recording" ? "not-allowed" : "pointer",
+                  minHeight: 44,
                 }}
               >
                 {phase === "recording" ? `Recording… ${countdown}s remaining` : "▶ Start 5-second analysis"}
