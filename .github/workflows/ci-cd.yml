@@ -329,8 +329,8 @@ jobs:
           done
 
           aws ecs create-service \
-            --cluster "$CLUSTER" \
-            --service-name "$SERVICE" \
+            --cluster "deepshield-project" \
+            --service-name "deepshield-service" \
             --task-definition "$TASK_DEF" \
             --desired-count "$DESIRED" \
             --launch-type FARGATE \
