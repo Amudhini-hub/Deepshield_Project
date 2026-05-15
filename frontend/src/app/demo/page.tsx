@@ -641,6 +641,69 @@ export default function DemoPage() {
                 </div>
               </div>
 
+              {/* ── Side-by-side comparison (deepfake only) ── */}
+              {df.is_deepfake && (() => {
+                const regions = [
+                  { x: "15%", y: "18%", w: "22%", h: "14%", label: "L. Eye" },
+                  { x: "63%", y: "18%", w: "22%", h: "14%", label: "R. Eye" },
+                  { x: "35%", y: "42%", w: "30%", h: "16%", label: "Mouth" },
+                  { x: "20%", y: "10%", w: "60%", h: "10%", label: "Forehead" },
+                ];
+                const [activeFrame, setActiveFrame] = useState(0);
+                const frames = ["Frame 12", "Frame 24", "Frame 36", "Frame 48"];
+                return (
+                  <div style={{ gridColumn: "span 2", background: C.card, border: `1.5px solid ${C.danger}`, borderRadius: 12, padding: "1.5rem" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem", flexWrap: "wrap", gap: "0.5rem" }}>
+                      <div style={{ fontSize: 12, color: C.danger, fontWeight: 600, textTransform: "uppercase", letterSpacing: 1 }}>Frame Analysis — Deepfake Detected</div>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        {frames.map((f, i) => (
+                          <button key={f} onClick={() => setActiveFrame(i)} style={{ fontSize: 11, padding: "3px 10px", borderRadius: 6, border: `1px solid ${i === activeFrame ? C.danger : C.border}`, background: i === activeFrame ? "#fee2e2" : C.card, color: i === activeFrame ? C.danger : C.muted, cursor: "pointer", fontWeight: i === activeFrame ? 600 : 400 }}>{f}</button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Original frame */}
+                      <div>
+                        <div style={{ fontSize: 12, color: C.muted, marginBottom: 8, fontWeight: 500 }}>Original capture</div>
+                        <div style={{ position: "relative", borderRadius: 8, overflow: "hidden", background: "#1e1b4b", aspectRatio: "4/3", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg,#312e81 0%,#1e1b4b 100%)", opacity: 0.9 }} />
+                          <div style={{ position: "relative", textAlign: "center" }}>
+                            <div style={{ fontSize: 32, marginBottom: 8 }}>👤</div>
+                            <div style={{ fontSize: 11, color: "#a5b4fc" }}>Frame {(activeFrame + 1) * 12} · 640×480</div>
+                          </div>
+                          <div style={{ position: "absolute", bottom: 8, left: 8, fontSize: 10, color: "#6ee7b7", background: "rgba(0,0,0,0.5)", padding: "2px 8px", borderRadius: 4, fontWeight: 600 }}>✓ CAPTURED</div>
+                        </div>
+                      </div>
+                      {/* Flagged frame with anomaly overlay */}
+                      <div>
+                        <div style={{ fontSize: 12, color: C.danger, marginBottom: 8, fontWeight: 500 }}>Anomalies detected</div>
+                        <div style={{ position: "relative", borderRadius: 8, overflow: "hidden", background: "#1e1b4b", aspectRatio: "4/3" }}>
+                          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg,#312e81 0%,#1e1b4b 100%)", opacity: 0.9 }} />
+                          <div style={{ position: "relative", width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                            <div style={{ textAlign: "center" }}>
+                              <div style={{ fontSize: 32, marginBottom: 8 }}>👤</div>
+                              <div style={{ fontSize: 11, color: "#a5b4fc" }}>Frame {(activeFrame + 1) * 12} · analysed</div>
+                            </div>
+                            {/* Anomaly region overlays */}
+                            {regions.map((r) => (
+                              <div key={r.label} style={{ position: "absolute", left: r.x, top: r.y, width: r.w, height: r.h, border: "2px solid #ef4444", borderRadius: 4, background: "rgba(239,68,68,0.18)" }}>
+                                <span style={{ position: "absolute", top: -16, left: 0, fontSize: 9, color: "#fca5a5", fontWeight: 600, whiteSpace: "nowrap", background: "rgba(0,0,0,0.5)", padding: "1px 4px", borderRadius: 3 }}>{r.label}</span>
+                              </div>
+                            ))}
+                          </div>
+                          <div style={{ position: "absolute", bottom: 8, left: 8, fontSize: 10, color: "#fca5a5", background: "rgba(0,0,0,0.5)", padding: "2px 8px", borderRadius: 4, fontWeight: 600 }}>✗ {regions.length} ANOMALIES</div>
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ marginTop: "1rem", fontSize: 12, color: C.body, display: "flex", gap: "1.5rem", flexWrap: "wrap" }}>
+                      <span><span style={{ color: C.danger, fontWeight: 600 }}>■</span> Flagged region</span>
+                      <span>Fake confidence: <strong style={{ color: C.danger }}>{dfScore}%</strong></span>
+                      <span>Frames analysed: <strong>{df.frame_count}</strong></span>
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* ── Explainability panel ── */}
               <div style={{ gridColumn: "span 2", background: C.card, border: `0.5px solid ${C.border}`, borderRadius: 12, padding: "1.5rem" }}>
                 <div style={{ fontSize: 12, color: C.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: "1.25rem" }}>
