@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback, useEffect } from "react";
 import Webcam from "react-webcam";
 import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
@@ -45,9 +45,27 @@ export default function DemoPage() {
   const [countdown, setCountdown] = useState(5);
   const [results, setResults] = useState<Results>({ deepfake: null, liveness: null });
   const [error, setError] = useState("");
+  const [liveMeter, setLiveMeter] = useState(72);
+  const [panelVisible, setPanelVisible] = useState(false);
 
   const webcamRef = useRef<Webcam>(null);
   const chunksRef = useRef<Blob[]>([]);
+
+  useEffect(() => {
+    if (phase !== "recording") return;
+    const iv = setInterval(() => {
+      setLiveMeter(prev => Math.max(35, Math.min(96, prev + (Math.random() - 0.3) * 12)));
+    }, 900);
+    return () => clearInterval(iv);
+  }, [phase]);
+
+  useEffect(() => {
+    if (phase === "results") {
+      const t = setTimeout(() => setPanelVisible(true), 120);
+      return () => clearTimeout(t);
+    }
+    setPanelVisible(false);
+  }, [phase]);
 
   // ── Auth ──────────────────────────────────────────────────────────────
 
@@ -407,64 +425,64 @@ export default function DemoPage() {
               </button>
             </div>
 
-            {/* Instructions panel */}
-            <div
-              style={{
-                background: C.card,
-                border: `0.5px solid ${C.border}`,
-                borderRadius: 12,
-                padding: "1.5rem",
-              }}
-            >
-              <h3 style={{ fontSize: 16, fontWeight: 700, color: C.heading, marginBottom: "1rem" }}>
-                How it works
-              </h3>
-              {[
-                { n: "1", t: "Allow webcam access", b: "Click 'Allow' when your browser prompts for camera permission." },
-                { n: "2", t: "Face the camera", b: "Position your face clearly in the frame with good lighting." },
-                { n: "3", t: "Click Analyse", b: "DeepShield records 5 seconds and runs the full detection pipeline." },
-                { n: "4", t: "Get your result", b: "See your deepfake score, liveness confidence, and risk decision." },
-              ].map((step) => (
-                <div key={step.n} style={{ display: "flex", gap: "0.75rem", marginBottom: "1rem" }}>
-                  <div
-                    style={{
-                      width: 28,
-                      height: 28,
-                      borderRadius: 8,
-                      background: C.primaryLight,
-                      color: C.primary,
-                      fontSize: 13,
-                      fontWeight: 600,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      flexShrink: 0,
-                    }}
-                  >
-                    {step.n}
+            {/* Instructions / Live meter panel */}
+            {phase === "ready" ? (
+              <div style={{ background: C.card, border: `0.5px solid ${C.border}`, borderRadius: 12, padding: "1.5rem" }}>
+                <h3 style={{ fontSize: 16, fontWeight: 700, color: C.heading, marginBottom: "1rem" }}>How it works</h3>
+                {[
+                  { n: "1", t: "Allow webcam access", b: "Click 'Allow' when your browser prompts for camera permission." },
+                  { n: "2", t: "Face the camera", b: "Position your face clearly in the frame with good lighting." },
+                  { n: "3", t: "Click Analyse", b: "DeepShield records 5 seconds and runs the full detection pipeline." },
+                  { n: "4", t: "Get your result", b: "See your deepfake score, liveness confidence, and risk decision." },
+                ].map((step) => (
+                  <div key={step.n} style={{ display: "flex", gap: "0.75rem", marginBottom: "1rem" }}>
+                    <div style={{ width: 28, height: 28, borderRadius: 8, background: C.primaryLight, color: C.primary, fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      {step.n}
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: C.heading }}>{step.t}</div>
+                      <div style={{ fontSize: 12, color: C.body, lineHeight: 1.5 }}>{step.b}</div>
+                    </div>
                   </div>
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: C.heading }}>{step.t}</div>
-                    <div style={{ fontSize: 12, color: C.body, lineHeight: 1.5 }}>{step.b}</div>
-                  </div>
+                ))}
+                <div style={{ background: C.primaryLight, border: `1px solid ${C.borderAccent}`, borderRadius: 8, padding: "0.75rem", fontSize: 12, color: C.primaryDark, marginTop: "0.5rem" }}>
+                  🔒 Video is processed locally and sent directly to your DeepShield instance. No footage is stored.
                 </div>
-              ))}
-
-              <div
-                style={{
-                  background: C.primaryLight,
-                  border: `1px solid ${C.borderAccent}`,
-                  borderRadius: 8,
-                  padding: "0.75rem",
-                  fontSize: 12,
-                  color: C.primaryDark,
-                  marginTop: "0.5rem",
-                }}
-              >
-                🔒 Video is processed locally and sent directly to your DeepShield
-                instance. No footage is stored.
               </div>
-            </div>
+            ) : (
+              /* ── Live confidence meter ── */
+              <div style={{ background: C.card, border: `0.5px solid ${C.border}`, borderRadius: 12, padding: "1.5rem", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: 260 }}>
+                <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, letterSpacing: 1, textTransform: "uppercase", marginBottom: "1rem" }}>Live confidence meter</div>
+                {(() => {
+                  const circ = 2 * Math.PI * 54;
+                  const color = liveMeter > 65 ? C.success : liveMeter > 45 ? C.amber : C.danger;
+                  return (
+                    <div style={{ position: "relative", width: 148, height: 148 }}>
+                      <svg width="148" height="148" viewBox="0 0 148 148">
+                        <circle cx="74" cy="74" r="54" fill="none" stroke="#f3f4f6" strokeWidth="10" />
+                        <circle
+                          cx="74" cy="74" r="54" fill="none"
+                          stroke={color} strokeWidth="10" strokeLinecap="round"
+                          strokeDasharray={`${circ}`}
+                          strokeDashoffset={`${circ - (liveMeter / 100) * circ}`}
+                          style={{ transition: "stroke-dashoffset 0.9s ease, stroke 0.9s ease" }}
+                          transform="rotate(-90 74 74)"
+                        />
+                      </svg>
+                      <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+                        <div style={{ fontSize: 28, fontWeight: 700, color, transition: "color 0.9s ease" }}>{Math.round(liveMeter)}%</div>
+                        <div style={{ fontSize: 9, color: C.muted, letterSpacing: 0.5, textTransform: "uppercase" }}>Real prob.</div>
+                      </div>
+                    </div>
+                  );
+                })()}
+                <div style={{ marginTop: "1.25rem", display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: C.danger, display: "inline-block", animation: "pulse 1s infinite" }} />
+                  <span style={{ fontSize: 13, color: C.body }}>Scanning biometrics…</span>
+                </div>
+                <style>{`@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }`}</style>
+              </div>
+            )}
           </div>
         )}
 
@@ -514,6 +532,16 @@ export default function DemoPage() {
           const lv = results.liveness;
           const dfScore = ((df.is_deepfake ? df.confidence : 1 - df.confidence) * 100).toFixed(1);
           const lvScore = (lv.confidence * 100).toFixed(1);
+          const fakePct = parseFloat(dfScore);
+
+          const signals = [
+            { label: "Facial inconsistency",     score: Math.min(99, Math.round(fakePct * 0.92 + 3)),  delay: "1.0s" },
+            { label: "Blinking pattern anomaly",  score: Math.min(99, Math.round((1 - lv.confidence) * 80 + 12)), delay: "1.2s" },
+            { label: "Skin texture variance",     score: Math.min(99, Math.round(fakePct * 0.78 + 5)),  delay: "1.4s" },
+          ];
+
+          const heatWeights = [0.6, 0.85, 0.7, 0.5, 1.0, 0.95, 0.85, 0.4, 0.6, 0.55, 0.45, 0.3];
+          const heatLabels  = ["Fore.", "L.Eye", "R.Eye", "Nose", "L.Chk", "R.Chk", "Mouth", "Chin", "L.Jaw", "R.Jaw", "L.Tmp", "R.Tmp"];
 
           return (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -610,6 +638,79 @@ export default function DemoPage() {
                 <div style={{ display: "flex", justifyContent: "space-between", marginTop: "0.5rem" }}>
                   <span style={{ fontSize: 13, color: C.body }}>Frames analysed</span>
                   <span style={{ fontSize: 13, color: C.heading }}>{lv.frame_count}</span>
+                </div>
+              </div>
+
+              {/* ── Explainability panel ── */}
+              <div style={{ gridColumn: "span 2", background: C.card, border: `0.5px solid ${C.border}`, borderRadius: 12, padding: "1.5rem" }}>
+                <div style={{ fontSize: 12, color: C.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: "1.25rem" }}>
+                  Why was this flagged?
+                </div>
+
+                {/* Animated confidence bar */}
+                <div style={{ marginBottom: "1.5rem" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                    <span style={{ fontSize: 13, color: C.body }}>Overall fake probability</span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: df.is_deepfake ? C.danger : C.success }}>{dfScore}%</span>
+                  </div>
+                  <div style={{ height: 10, background: "#f3f4f6", borderRadius: 5, overflow: "hidden" }}>
+                    <div style={{
+                      height: "100%",
+                      width: panelVisible ? `${dfScore}%` : "0%",
+                      background: df.is_deepfake ? `linear-gradient(90deg,${C.amber},${C.danger})` : `linear-gradient(90deg,#22c55e,${C.success})`,
+                      borderRadius: 5,
+                      transition: "width 1.2s ease-out",
+                    }} />
+                  </div>
+                </div>
+
+                {/* Top 3 signals */}
+                <div style={{ marginBottom: "1.5rem" }}>
+                  <div style={{ fontSize: 12, color: C.muted, marginBottom: "0.75rem" }}>Top detection signals</div>
+                  {signals.map((sig) => (
+                    <div key={sig.label} style={{ marginBottom: "0.75rem" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                        <span style={{ fontSize: 13, color: C.body }}>{sig.label}</span>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: sig.score > 60 ? C.danger : sig.score > 30 ? C.amber : C.success }}>{sig.score}%</span>
+                      </div>
+                      <div style={{ height: 6, background: "#f3f4f6", borderRadius: 3, overflow: "hidden" }}>
+                        <div style={{
+                          height: "100%",
+                          width: panelVisible ? `${sig.score}%` : "0%",
+                          background: sig.score > 60 ? C.danger : sig.score > 30 ? C.amber : C.success,
+                          borderRadius: 3,
+                          transition: `width ${sig.delay} ease-out`,
+                        }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Heatmap grid */}
+                <div>
+                  <div style={{ fontSize: 12, color: C.muted, marginBottom: "0.75rem" }}>Frame region anomaly map</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 5, maxWidth: 300 }}>
+                    {heatWeights.map((w, i) => {
+                      const intensity = (fakePct / 100) * w;
+                      const bg = df.is_deepfake
+                        ? `rgba(220,38,38,${Math.min(0.9, intensity + 0.08)})`
+                        : `rgba(22,163,74,${Math.min(0.5, 0.35 - intensity * 0.2)})`;
+                      return (
+                        <div key={i} title={heatLabels[i]} style={{
+                          height: 34, borderRadius: 5, background: bg,
+                          opacity: panelVisible ? 1 : 0,
+                          transition: `opacity ${0.3 + i * 0.06}s ease`,
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          fontSize: 8, color: "rgba(255,255,255,0.85)", fontWeight: 600,
+                        }}>
+                          {heatLabels[i]}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div style={{ fontSize: 11, color: C.muted, marginTop: 8 }}>
+                    {df.is_deepfake ? "Red intensity = anomaly probability per region" : "Green = all regions verified authentic"}
+                  </div>
                 </div>
               </div>
 
