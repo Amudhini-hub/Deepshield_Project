@@ -308,22 +308,14 @@ jobs:
           echo "ALB already attached (loadBalancers: $LB_COUNT) — skipping"
         else
           echo "Service does not exist — creating with ALB target group..."
-
-          TASK_DEF=$(aws ecs list-task-definitions \
-            --family-prefix "deepshield" \
-            --sort DESC \
-            --query 'taskDefinitionArns[0]' \
-            --output text)
-
-          echo "  Task def: $TASK_DEF"
           aws ecs create-service \
             --cluster "deepshield-project" \
             --service-name "deepshield-service" \
-            --task-definition "$TASK_DEF" \
+            --task-definition "deepshield-task:1" \
             --desired-count 1 \
             --launch-type FARGATE \
             --load-balancers "targetGroupArn=$TG_ARN,containerName=deepshield,containerPort=8000" \
-            --network-configuration "awsvpcConfiguration={subnets=[${{ secrets.PUBLIC_SUBNET_IDS }}],securityGroups=[${{ secrets.ALB_SECURITY_GROUP_ID }}],assignPublicIp=ENABLED}" \
+            --network-configuration "awsvpcConfiguration={subnets=[subnet-0758bed6d3f3a9691,subnet-0ba34408a50d9702a],securityGroups=[${{ secrets.ALB_SECURITY_GROUP_ID }}],assignPublicIp=ENABLED}" \
             --health-check-grace-period-seconds 60 \
             --output json > /dev/null
           echo "  Service created with ALB"
