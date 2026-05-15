@@ -833,6 +833,29 @@ async def detect_liveness(
                 logger.warning(f"Failed to clean up video file: {e}")
 
 
+# ==================== ANALYTICS ENDPOINTS ====================
+
+
+@api_router.get(
+    "/analytics/summary",
+    status_code=status.HTTP_200_OK,
+    summary="Detection analytics summary",
+)
+async def analytics_summary(
+    days: int = 7,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Public analytics summary for the dashboard — no auth required."""
+    try:
+        return crud.get_analytics_summary(db, days=days)
+    except Exception as e:
+        logger.error(f"Error fetching analytics: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error fetching analytics",
+        )
+
+
 # ==================== HEALTH & STATUS ENDPOINTS ====================
 
 

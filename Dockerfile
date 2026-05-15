@@ -9,11 +9,18 @@ ENV USE_SQLITE_RUNTIME=true
 # Set work directory
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies (includes OpenCV runtime + curl for healthcheck)
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
     libpq-dev \
+    curl \
+    libgl1 \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender1 \
+    libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies

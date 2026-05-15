@@ -109,9 +109,8 @@ export default function HomePage() {
 
       {/* ── Hero ── */}
       <div
+        className="px-4 md:px-12 py-12 md:py-20 text-center"
         style={{
-          padding: "5rem 3rem 4rem",
-          textAlign: "center",
           maxWidth: 860,
           margin: "0 auto",
         }}
@@ -170,13 +169,11 @@ export default function HomePage() {
 
       {/* ── Stats bar ── */}
       <div
+        className="grid grid-cols-2 md:grid-cols-4 mx-4 md:mx-12 mb-8"
         style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(4, 1fr)",
           background: C.card,
           border: `0.5px solid ${C.border}`,
           borderRadius: 14,
-          margin: "0 3rem 3rem",
           overflow: "hidden",
         }}
       >
@@ -263,14 +260,7 @@ export default function HomePage() {
           pipeline before your bank approves it.
         </div>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(3, 1fr)",
-            gap: "1.25rem",
-            marginTop: "2.5rem",
-          }}
-        >
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mt-10">
           {[
             {
               num: "01",
@@ -316,17 +306,16 @@ export default function HomePage() {
       </div>
 
       {/* ── Divider ── */}
-      <div style={{ height: "0.5px", background: C.border, margin: "0 3rem" }} />
+      <div className="mx-4 md:mx-12" style={{ height: "0.5px", background: C.border }} />
 
       {/* ── Demo preview ── */}
       <div
         id="demo-preview"
+        className="mx-4 md:mx-12 my-8 md:my-12 px-4 md:px-12 py-8 md:py-10"
         style={{
           background: C.card,
           border: `0.5px solid ${C.border}`,
           borderRadius: 16,
-          padding: "2.5rem 3rem",
-          margin: "3rem",
         }}
       >
         <div style={{ textAlign: "center", marginBottom: "2rem" }}>
@@ -338,7 +327,7 @@ export default function HomePage() {
           </div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2.5rem", alignItems: "center" }}>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-10 items-center">
           <div>
             <h3 style={{ fontSize: 20, fontWeight: 700, color: C.heading, marginBottom: 10 }}>
               Real-time analysis
@@ -450,7 +439,7 @@ export default function HomePage() {
           Everything banks need to stop fraud
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "1.25rem" }}>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           {[
             {
               Icon: Brain,
@@ -529,7 +518,7 @@ export default function HomePage() {
       </div>
 
       {/* ── Divider ── */}
-      <div style={{ height: "0.5px", background: C.border, margin: "0 3rem" }} />
+      <div className="mx-4 md:mx-12" style={{ height: "0.5px", background: C.border }} />
 
       {/* ── Integration code ── */}
       <div
@@ -616,7 +605,7 @@ export default function HomePage() {
       </div>
 
       {/* ── CTA ── */}
-      <div style={{ margin: "0 3rem 3rem" }}>
+      <div className="mx-4 md:mx-12 mb-8 md:mb-12">
         <div
           style={{
             background: C.primary,

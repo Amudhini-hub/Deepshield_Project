@@ -24,7 +24,7 @@ const C = {
   amber: "#d97706",
 };
 
-type Phase = "auth" | "ready" | "recording" | "analyzing" | "results" | "error";
+type Phase = "auth" | "ready" | "recording" | "analyzing" | "results" | "error" | "ml_unavailable";
 
 interface Results {
   deepfake: DeepfakeResult | null;
@@ -72,7 +72,7 @@ export default function DemoPage() {
     }
   }
 
-  async function handleAuth(e: React.FormEvent) {
+  async function handleAuth(e: React.SyntheticEvent) {
     e.preventDefault();
     setAuthLoading(true);
     setAuthError("");
@@ -124,11 +124,16 @@ export default function DemoPage() {
         setResults({ deepfake, liveness });
         setPhase("results");
       } catch (err: unknown) {
-        const msg =
-          (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
-          "Analysis failed. Please try again.";
-        setError(msg);
-        setPhase("error");
+        const status = (err as { response?: { status?: number } })?.response?.status;
+        if (status === 503) {
+          setPhase("ml_unavailable");
+        } else {
+          const msg =
+            (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
+            "Analysis failed. Please try again.";
+          setError(msg);
+          setPhase("error");
+        }
       }
     };
 
@@ -180,7 +185,7 @@ export default function DemoPage() {
     <div style={{ background: C.pageBg, color: C.heading, minHeight: "100vh" }}>
       <Nav />
 
-      <div style={{ maxWidth: 900, margin: "0 auto", padding: "3rem" }}>
+      <div className="px-4 md:px-12 py-8 md:py-12" style={{ maxWidth: 900, margin: "0 auto" }}>
         {/* Header */}
         <div style={{ marginBottom: "2rem" }}>
           <div style={{ fontSize: 12, color: C.primary, fontWeight: 600, letterSpacing: 1, textTransform: "uppercase", marginBottom: 8 }}>
@@ -342,7 +347,7 @@ export default function DemoPage() {
 
         {/* ── Webcam + controls ── */}
         {(phase === "ready" || phase === "recording") && (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2rem", alignItems: "start" }}>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
             <div>
               <div
                 style={{
@@ -511,7 +516,7 @@ export default function DemoPage() {
           const lvScore = (lv.confidence * 100).toFixed(1);
 
           return (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem" }}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Decision card */}
               <div
                 style={{
@@ -627,6 +632,80 @@ export default function DemoPage() {
             </div>
           );
         })()}
+
+        {/* ── ML unavailable ── */}
+        {phase === "ml_unavailable" && (
+          <div
+            style={{
+              background: C.card,
+              border: `1px solid ${C.border}`,
+              borderRadius: 16,
+              padding: "2.5rem",
+              textAlign: "center",
+              maxWidth: 520,
+            }}
+          >
+            <div style={{ fontSize: 48, marginBottom: "1rem" }}>🔧</div>
+            <h2 style={{ fontSize: 22, fontWeight: 700, color: C.heading, marginBottom: 10 }}>
+              ML services are warming up
+            </h2>
+            <p style={{ color: C.body, fontSize: 14, lineHeight: 1.7, marginBottom: "1.5rem" }}>
+              The deepfake detection and liveness models are not yet loaded on
+              this instance. This happens when TensorFlow or OpenCV dependencies
+              are missing, or the backend is in lightweight mode.
+            </p>
+            <div
+              style={{
+                background: C.primaryLight,
+                border: `1px solid ${C.borderAccent}`,
+                borderRadius: 10,
+                padding: "1rem",
+                fontSize: 13,
+                color: C.heading,
+                textAlign: "left",
+                marginBottom: "1.5rem",
+                lineHeight: 1.8,
+              }}
+            >
+              <strong>To enable ML detection:</strong>
+              <br />1. Install dependencies: <code>pip install tensorflow opencv-python-headless</code>
+              <br />2. Run model initialiser: <code>python initialize_ml_models.py</code>
+              <br />3. Restart the backend server
+            </div>
+            <div style={{ display: "flex", gap: "0.75rem", justifyContent: "center", flexWrap: "wrap" }}>
+              <button
+                onClick={() => setPhase("ready")}
+                style={{
+                  background: C.primary,
+                  color: "#fff",
+                  border: "none",
+                  padding: "0.75rem 1.5rem",
+                  borderRadius: 10,
+                  fontSize: 14,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                ↺ Try again
+              </button>
+              <a
+                href="/integration"
+                style={{
+                  background: C.card,
+                  color: C.primary,
+                  border: `1px solid ${C.borderAccent}`,
+                  padding: "0.75rem 1.5rem",
+                  borderRadius: 10,
+                  fontSize: 14,
+                  fontWeight: 600,
+                  textDecoration: "none",
+                }}
+              >
+                View API docs →
+              </a>
+            </div>
+          </div>
+        )}
 
         {/* ── Error ── */}
         {phase === "error" && (

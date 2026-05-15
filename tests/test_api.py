@@ -252,3 +252,49 @@ class TestHealthEndpoints:
         data = response.json()
         assert data["status"] == "ok"
         assert data["app"] == "Deepshield"
+
+
+class TestAnalytics:
+    def test_analytics_summary_structure(self):
+        response = client.get("/api/v1/analytics/summary")
+        assert response.status_code == 200
+        data = response.json()
+        for key in ("total_scans", "deepfake_count", "liveness_count", "threats_blocked", "avg_confidence", "last_7_days", "recent_detections"):
+            assert key in data, f"Missing key: {key}"
+        assert isinstance(data["last_7_days"], list)
+        assert isinstance(data["recent_detections"], list)
+
+    def test_analytics_summary_value_ranges(self):
+        response = client.get("/api/v1/analytics/summary")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total_scans"] >= 0
+        assert data["threats_blocked"] >= 0
+        assert data["deepfake_count"] >= 0
+        assert data["liveness_count"] >= 0
+        assert 0 <= data["avg_confidence"] <= 100
+
+    def test_analytics_summary_custom_days(self):
+        response = client.get("/api/v1/analytics/summary?days=30")
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data["last_7_days"], list)
+        assert len(data["last_7_days"]) <= 30
+
+    def test_analytics_summary_daily_buckets_shape(self):
+        response = client.get("/api/v1/analytics/summary")
+        assert response.status_code == 200
+        buckets = response.json()["last_7_days"]
+        for bucket in buckets:
+            assert "day" in bucket or "date" in bucket
+            assert "scans" in bucket
+            assert "threats" in bucket
+
+    def test_analytics_summary_recent_detections_shape(self):
+        response = client.get("/api/v1/analytics/summary")
+        assert response.status_code == 200
+        detections = response.json()["recent_detections"]
+        for det in detections:
+            assert "id" in det
+            assert "verdict" in det
+            assert "confidence" in det

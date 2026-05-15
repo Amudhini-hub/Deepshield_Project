@@ -206,7 +206,7 @@ export default function IntegrationPage() {
     <div style={{ background: C.pageBg, color: C.heading, minHeight: "100vh" }}>
       <Nav />
 
-      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "3rem" }}>
+      <div className="px-4 md:px-12 py-8 md:py-12" style={{ maxWidth: 1100, margin: "0 auto" }}>
         {/* Header */}
         <div style={{ marginBottom: "3rem" }}>
           <div style={{ fontSize: 12, color: C.primary, fontWeight: 600, letterSpacing: 1, textTransform: "uppercase", marginBottom: 8 }}>
@@ -320,7 +320,7 @@ export default function IntegrationPage() {
             (long-lived). Pass the access token in every request header.
           </p>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "1rem" }}>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {[
               { step: "1", title: "Login", body: "POST /users/login with form-encoded username + password. Receive access_token and refresh_token." },
               { step: "2", title: "Authenticate", body: "Include Authorization: Bearer <access_token> in every protected request header." },
@@ -364,7 +364,7 @@ export default function IntegrationPage() {
           <div style={{ fontSize: 18, fontWeight: 700, color: C.heading, marginBottom: "1rem" }}>
             Response schemas
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.25rem" }}>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {[
               {
                 title: "Deepfake detection",
@@ -446,7 +446,8 @@ export default function IntegrationPage() {
           <div style={{ fontSize: 18, fontWeight: 700, color: C.heading, marginBottom: "1rem" }}>
             Endpoint reference
           </div>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 480 }}>
             <thead>
               <tr>
                 {["Method", "Endpoint", "Auth", "Description"].map((h) => (
@@ -503,6 +504,7 @@ export default function IntegrationPage() {
               })}
             </tbody>
           </table>
+          </div>
         </div>
       </div>
 

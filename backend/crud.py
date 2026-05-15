@@ -297,6 +297,89 @@ def delete_audit_logs_older_than(db: Session, days: int) -> int:
         raise
 
 
+# ==================== ANALYTICS ====================
+
+
+def get_analytics_summary(db: Session, days: int = 7) -> dict:
+    """Aggregate detection analytics from audit logs for the dashboard."""
+    from collections import defaultdict
+    from datetime import timedelta
+
+    cutoff = datetime.utcnow() - timedelta(days=days)
+
+    deepfake_logs = (
+        db.query(AuditLog)
+        .filter(AuditLog.event_type == "DEEPFAKE_DETECTION")
+        .order_by(AuditLog.created_at.desc())
+        .all()
+    )
+    liveness_logs = (
+        db.query(AuditLog)
+        .filter(AuditLog.event_type == "LIVENESS_DETECTION")
+        .all()
+    )
+
+    threats_blocked = sum(
+        1 for l in deepfake_logs if (l.payload or {}).get("is_deepfake")
+    ) + sum(
+        1 for l in liveness_logs if not (l.payload or {}).get("is_alive", True)
+    )
+
+    all_confidences = [
+        (l.payload or {}).get("confidence", 0)
+        for l in deepfake_logs + liveness_logs
+        if l.payload
+    ]
+    avg_confidence = (
+        round(sum(all_confidences) / len(all_confidences) * 100, 1)
+        if all_confidences
+        else 0.0
+    )
+
+    # Daily buckets for the last `days` days
+    recent = [
+        l
+        for l in deepfake_logs + liveness_logs
+        if l.created_at >= cutoff
+    ]
+    daily: dict = defaultdict(lambda: {"scans": 0, "threats": 0})
+    for l in recent:
+        key = l.created_at.date()
+        daily[key]["day"] = l.created_at.strftime("%a")
+        daily[key]["scans"] += 1
+        if l.event_type == "DEEPFAKE_DETECTION" and (l.payload or {}).get("is_deepfake"):
+            daily[key]["threats"] += 1
+        elif l.event_type == "LIVENESS_DETECTION" and not (l.payload or {}).get("is_alive", True):
+            daily[key]["threats"] += 1
+
+    last_7_days = [
+        {"date": str(d), "day": v["day"], "scans": v["scans"], "threats": v["threats"]}
+        for d, v in sorted(daily.items())
+    ]
+
+    # Recent detections (last 8 deepfake scans)
+    recent_detections = [
+        {
+            "id": f"DS-{l.id:04d}",
+            "verdict": "BLOCK" if (l.payload or {}).get("is_deepfake") else "REAL",
+            "confidence": round((l.payload or {}).get("confidence", 0) * 100, 1),
+            "method": (l.payload or {}).get("detection_method", "ensemble"),
+            "created_at": l.created_at.isoformat(),
+        }
+        for l in deepfake_logs[:8]
+    ]
+
+    return {
+        "total_scans": len(deepfake_logs) + len(liveness_logs),
+        "deepfake_count": len(deepfake_logs),
+        "liveness_count": len(liveness_logs),
+        "threats_blocked": threats_blocked,
+        "avg_confidence": avg_confidence,
+        "last_7_days": last_7_days,
+        "recent_detections": recent_detections,
+    }
+
+
 # ==================== HELPER FUNCTIONS ====================
 
 
