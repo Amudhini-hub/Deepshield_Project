@@ -282,12 +282,10 @@ jobs:
     - name: Attach ALB to ECS service
       run: |
         TG_ARN="${{ steps.alb.outputs.TG_ARN }}"
-        CLUSTER="${{ secrets.ECS_CLUSTER }}"
-        SERVICE="${{ secrets.ECS_SERVICE }}"
 
         LB_COUNT=$(aws ecs describe-services \
-          --cluster "$CLUSTER" \
-          --services "$SERVICE" \
+          --cluster "deepshield-project" \
+          --services "deepshield-service" \
           --query 'length(services[0].loadBalancers)' \
           --output text 2>/dev/null || echo "0")
 
@@ -295,8 +293,8 @@ jobs:
           echo "No LB on service — recreating with ALB target group..."
 
           SERVICE_JSON=$(aws ecs describe-services \
-            --cluster "$CLUSTER" \
-            --services "$SERVICE" \
+            --cluster "deepshield-project" \
+            --services "deepshield-service" \
             --query 'services[0]' \
             --output json)
 
@@ -316,12 +314,12 @@ jobs:
           echo "  Desired:   $DESIRED"
 
           # Scale to 0 then delete so we don't wait for draining
-          aws ecs update-service --cluster "$CLUSTER" --service "$SERVICE" --desired-count 0 --output json > /dev/null
-          aws ecs delete-service  --cluster "$CLUSTER" --service "$SERVICE" --force --output json > /dev/null
+          aws ecs update-service --cluster "deepshield-project" --service "deepshield-service" --desired-count 0 --output json > /dev/null
+          aws ecs delete-service  --cluster "deepshield-project" --service "deepshield-service" --force --output json > /dev/null
 
           echo "  Waiting for service deletion..."
           for i in $(seq 1 24); do
-            STATUS=$(aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" \
+            STATUS=$(aws ecs describe-services --cluster "deepshield-project" --services "deepshield-service" \
               --query 'services[0].status' --output text 2>/dev/null || echo "INACTIVE")
             [ "$STATUS" = "INACTIVE" ] || [ "$STATUS" = "None" ] || [ -z "$STATUS" ] && break
             echo "  Status: $STATUS (${i}/24)"
@@ -338,7 +336,11 @@ jobs:
             --network-configuration "awsvpcConfiguration={subnets=[$SVC_SUBNETS],securityGroups=[$SVC_SGS],assignPublicIp=$ASSIGN_IP}" \
             --health-check-grace-period-seconds 60 \
             --output json > /dev/null
-          echo "  Service recreated with ALB"
+          echo "  Service recreated with ALB — waiting for it to become stable..."
+          aws ecs wait services-stable \
+            --cluster "deepshield-project" \
+            --services "deepshield-service"
+          echo "  Service is ACTIVE"
         else
           echo "ALB already attached (loadBalancers: $LB_COUNT) — skipping recreate"
         fi
@@ -346,8 +348,8 @@ jobs:
     - name: Deploy to ECS
       run: |
         aws ecs update-service \
-          --cluster "${{ secrets.ECS_CLUSTER }}" \
-          --service "${{ secrets.ECS_SERVICE }}" \
+          --cluster "deepshield-project" \
+          --service "deepshield-service" \
           --force-new-deployment \
           --region ap-south-1 \
           --output json > /dev/null
