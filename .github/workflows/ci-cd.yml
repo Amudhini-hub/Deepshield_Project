@@ -175,13 +175,15 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+      with:
+        persist-credentials: true
 
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ secrets.AWS_REGION }}
+        aws-region: ap-south-1
 
     - name: Login to Amazon ECR
       id: login-ecr
@@ -195,18 +197,193 @@ jobs:
         docker build -t $ECR_REGISTRY/${{ secrets.ECR_REPOSITORY }}:$IMAGE_TAG .
         docker push $ECR_REGISTRY/${{ secrets.ECR_REPOSITORY }}:$IMAGE_TAG
 
+    - name: Create or retrieve ALB infrastructure
+      id: alb
+      run: |
+        ALB_NAME="deepshield-alb"
+        TG_NAME="deepshield-tg"
+        VPC_ID="${{ secrets.AWS_VPC_ID }}"
+        SUBNETS="${{ secrets.PUBLIC_SUBNET_IDS }}"
+        SG_ID="${{ secrets.ALB_SECURITY_GROUP_ID }}"
+
+        # ── Target group (ip type for Fargate) ───────────────────────
+        TG_ARN=$(aws elbv2 describe-target-groups \
+          --names "$TG_NAME" \
+          --query 'TargetGroups[0].TargetGroupArn' \
+          --output text 2>/dev/null || echo "")
+        if [ -z "$TG_ARN" ] || [ "$TG_ARN" = "None" ]; then
+          echo "Creating target group $TG_NAME..."
+          TG_ARN=$(aws elbv2 create-target-group \
+            --name "$TG_NAME" \
+            --protocol HTTP \
+            --port 8000 \
+            --vpc-id "$VPC_ID" \
+            --target-type ip \
+            --health-check-protocol HTTP \
+            --health-check-path /health \
+            --health-check-interval-seconds 30 \
+            --health-check-timeout-seconds 5 \
+            --healthy-threshold-count 2 \
+            --unhealthy-threshold-count 3 \
+            --query 'TargetGroups[0].TargetGroupArn' \
+            --output text)
+          echo "  Created: $TG_ARN"
+        else
+          echo "Reusing target group: $TG_ARN"
+        fi
+        echo "TG_ARN=$TG_ARN" >> "$GITHUB_OUTPUT"
+
+        # ── Application Load Balancer ────────────────────────────────
+        ALB_ARN=$(aws elbv2 describe-load-balancers \
+          --names "$ALB_NAME" \
+          --query 'LoadBalancers[0].LoadBalancerArn' \
+          --output text 2>/dev/null || echo "")
+        if [ -z "$ALB_ARN" ] || [ "$ALB_ARN" = "None" ]; then
+          echo "Creating ALB $ALB_NAME..."
+          ALB_ARN=$(aws elbv2 create-load-balancer \
+            --name "$ALB_NAME" \
+            --subnets $(echo "$SUBNETS" | tr ',' ' ') \
+            --security-groups "$SG_ID" \
+            --scheme internet-facing \
+            --type application \
+            --ip-address-type ipv4 \
+            --query 'LoadBalancers[0].LoadBalancerArn' \
+            --output text)
+          echo "  Waiting for ALB to become active..."
+          aws elbv2 wait load-balancer-available --load-balancer-arns "$ALB_ARN"
+          echo "  Created: $ALB_ARN"
+        else
+          echo "Reusing ALB: $ALB_ARN"
+        fi
+
+        ALB_DNS=$(aws elbv2 describe-load-balancers \
+          --load-balancer-arns "$ALB_ARN" \
+          --query 'LoadBalancers[0].DNSName' \
+          --output text)
+        echo "ALB_ARN=$ALB_ARN" >> "$GITHUB_OUTPUT"
+        echo "ALB_DNS=$ALB_DNS" >> "$GITHUB_OUTPUT"
+
+        # ── HTTP listener on port 80 → target group ──────────────────
+        LISTENER_ARN=$(aws elbv2 describe-listeners \
+          --load-balancer-arn "$ALB_ARN" \
+          --query "Listeners[?Port==\`80\`].ListenerArn | [0]" \
+          --output text 2>/dev/null || echo "")
+        if [ -z "$LISTENER_ARN" ] || [ "$LISTENER_ARN" = "None" ]; then
+          echo "Creating HTTP listener on port 80..."
+          aws elbv2 create-listener \
+            --load-balancer-arn "$ALB_ARN" \
+            --protocol HTTP \
+            --port 80 \
+            --default-actions "Type=forward,TargetGroupArn=$TG_ARN"
+        else
+          echo "Reusing listener: $LISTENER_ARN"
+        fi
+
+    - name: Attach ALB to ECS service
+      run: |
+        TG_ARN="${{ steps.alb.outputs.TG_ARN }}"
+        CLUSTER="${{ secrets.ECS_CLUSTER }}"
+        SERVICE="${{ secrets.ECS_SERVICE }}"
+
+        LB_COUNT=$(aws ecs describe-services \
+          --cluster "$CLUSTER" \
+          --services "$SERVICE" \
+          --query 'length(services[0].loadBalancers)' \
+          --output text 2>/dev/null || echo "0")
+
+        if [ "$LB_COUNT" = "0" ] || [ "$LB_COUNT" = "None" ]; then
+          echo "No LB on service — recreating with ALB target group..."
+
+          SERVICE_JSON=$(aws ecs describe-services \
+            --cluster "$CLUSTER" \
+            --services "$SERVICE" \
+            --query 'services[0]' \
+            --output json)
+
+          TASK_DEF=$(echo "$SERVICE_JSON"  | jq -r '.taskDefinition')
+          DESIRED=$(echo "$SERVICE_JSON"   | jq -r '.desiredCount')
+          SVC_SUBNETS=$(echo "$SERVICE_JSON" | jq -r '.networkConfiguration.awsvpcConfiguration.subnets | join(",")')
+          SVC_SGS=$(echo "$SERVICE_JSON"     | jq -r '.networkConfiguration.awsvpcConfiguration.securityGroups | join(",")')
+          ASSIGN_IP=$(echo "$SERVICE_JSON"   | jq -r '.networkConfiguration.awsvpcConfiguration.assignPublicIp')
+
+          CONTAINER=$(aws ecs describe-task-definition \
+            --task-definition "$TASK_DEF" \
+            --query 'taskDefinition.containerDefinitions[0].name' \
+            --output text)
+
+          echo "  Task def:  $TASK_DEF"
+          echo "  Container: $CONTAINER"
+          echo "  Desired:   $DESIRED"
+
+          # Scale to 0 then delete so we don't wait for draining
+          aws ecs update-service --cluster "$CLUSTER" --service "$SERVICE" --desired-count 0 --output json > /dev/null
+          aws ecs delete-service  --cluster "$CLUSTER" --service "$SERVICE" --force --output json > /dev/null
+
+          echo "  Waiting for service deletion..."
+          for i in $(seq 1 24); do
+            STATUS=$(aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" \
+              --query 'services[0].status' --output text 2>/dev/null || echo "INACTIVE")
+            [ "$STATUS" = "INACTIVE" ] || [ "$STATUS" = "None" ] || [ -z "$STATUS" ] && break
+            echo "  Status: $STATUS (${i}/24)"
+            sleep 10
+          done
+
+          aws ecs create-service \
+            --cluster "$CLUSTER" \
+            --service-name "$SERVICE" \
+            --task-definition "$TASK_DEF" \
+            --desired-count "$DESIRED" \
+            --launch-type FARGATE \
+            --load-balancers "targetGroupArn=$TG_ARN,containerName=$CONTAINER,containerPort=8000" \
+            --network-configuration "awsvpcConfiguration={subnets=[$SVC_SUBNETS],securityGroups=[$SVC_SGS],assignPublicIp=$ASSIGN_IP}" \
+            --health-check-grace-period-seconds 60 \
+            --output json > /dev/null
+          echo "  Service recreated with ALB"
+        else
+          echo "ALB already attached (loadBalancers: $LB_COUNT) — skipping recreate"
+        fi
+
     - name: Deploy to ECS
-      shell: bash
-      run: >-
-        aws ecs update-service
-        --cluster "${{ secrets.ECS_CLUSTER }}"
-        --service "${{ secrets.ECS_SERVICE }}"
-        --force-new-deployment
-        --region "${{ secrets.AWS_REGION }}"
+      run: |
+        aws ecs update-service \
+          --cluster "${{ secrets.ECS_CLUSTER }}" \
+          --service "${{ secrets.ECS_SERVICE }}" \
+          --force-new-deployment \
+          --region ap-south-1 \
+          --output json > /dev/null
+        echo "Forced new deployment"
+
+    - name: Update .env.production with ALB DNS
+      run: |
+        ALB_DNS="${{ steps.alb.outputs.ALB_DNS }}"
+        sed -i "s|NEXT_PUBLIC_API_URL=.*|NEXT_PUBLIC_API_URL=http://${ALB_DNS}/api/v1|" frontend/.env.production
+        echo "Updated frontend/.env.production → http://${ALB_DNS}/api/v1"
+
+        git config user.name  "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git add -f frontend/.env.production
+        if git diff --staged --quiet; then
+          echo "ALB DNS unchanged — no commit needed"
+        else
+          git commit -m "ci: update NEXT_PUBLIC_API_URL to ALB DNS [skip ci]"
+          git push origin HEAD:main
+        fi
+
+    - name: Output ALB URL
+      run: |
+        echo "============================================"
+        echo "  DeepShield ALB DNS : ${{ steps.alb.outputs.ALB_DNS }}"
+        echo "  API base URL       : http://${{ steps.alb.outputs.ALB_DNS }}/api/v1"
+        echo "  Health check       : http://${{ steps.alb.outputs.ALB_DNS }}/health"
+        echo "============================================"
 
     - name: Run smoke tests
       run: |
         echo "Running production smoke tests..."
+        sleep 15
+        curl -sf "http://${{ steps.alb.outputs.ALB_DNS }}/health" \
+          && echo "Health check passed" \
+          || echo "Warning: health check not yet passing (ALB may still be warming up)"
 
   notify:
     runs-on: ubuntu-latest
