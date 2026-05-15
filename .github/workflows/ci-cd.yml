@@ -283,66 +283,50 @@ jobs:
       run: |
         TG_ARN="${{ steps.alb.outputs.TG_ARN }}"
 
+        SERVICE_STATUS=$(aws ecs describe-services \
+          --cluster "deepshield-project" \
+          --services "deepshield-service" \
+          --query 'services[0].status' \
+          --output text 2>/dev/null || echo "MISSING")
+
         LB_COUNT=$(aws ecs describe-services \
           --cluster "deepshield-project" \
           --services "deepshield-service" \
           --query 'length(services[0].loadBalancers)' \
           --output text 2>/dev/null || echo "0")
 
-        if [ "$LB_COUNT" = "0" ] || [ "$LB_COUNT" = "None" ]; then
-          echo "No LB on service — recreating with ALB target group..."
-
-          SERVICE_JSON=$(aws ecs describe-services \
+        if [ "$SERVICE_STATUS" = "ACTIVE" ] && { [ "$LB_COUNT" = "0" ] || [ "$LB_COUNT" = "None" ]; }; then
+          echo "Service exists but has no LB — attaching ALB via update-service..."
+          aws ecs update-service \
             --cluster "deepshield-project" \
-            --services "deepshield-service" \
-            --query 'services[0]' \
-            --output json)
+            --service "deepshield-service" \
+            --load-balancers "targetGroupArn=$TG_ARN,containerName=deepshield,containerPort=8000" \
+            --force-new-deployment \
+            --output json > /dev/null
+          echo "  ALB attached"
+        elif [ "$SERVICE_STATUS" = "ACTIVE" ]; then
+          echo "ALB already attached (loadBalancers: $LB_COUNT) — skipping"
+        else
+          echo "Service does not exist — creating with ALB target group..."
 
-          TASK_DEF=$(echo "$SERVICE_JSON"  | jq -r '.taskDefinition')
-          DESIRED=$(echo "$SERVICE_JSON"   | jq -r '.desiredCount')
-          SVC_SUBNETS=$(echo "$SERVICE_JSON" | jq -r '.networkConfiguration.awsvpcConfiguration.subnets | join(",")')
-          SVC_SGS=$(echo "$SERVICE_JSON"     | jq -r '.networkConfiguration.awsvpcConfiguration.securityGroups | join(",")')
-          ASSIGN_IP=$(echo "$SERVICE_JSON"   | jq -r '.networkConfiguration.awsvpcConfiguration.assignPublicIp')
-
-          CONTAINER=$(aws ecs describe-task-definition \
-            --task-definition "$TASK_DEF" \
-            --query 'taskDefinition.containerDefinitions[0].name' \
+          TASK_DEF=$(aws ecs list-task-definitions \
+            --family-prefix "deepshield" \
+            --sort DESC \
+            --query 'taskDefinitionArns[0]' \
             --output text)
 
-          echo "  Task def:  $TASK_DEF"
-          echo "  Container: $CONTAINER"
-          echo "  Desired:   $DESIRED"
-
-          # Scale to 0 then delete so we don't wait for draining
-          aws ecs update-service --cluster "deepshield-project" --service "deepshield-service" --desired-count 0 --output json > /dev/null
-          aws ecs delete-service  --cluster "deepshield-project" --service "deepshield-service" --force --output json > /dev/null
-
-          echo "  Waiting for service deletion..."
-          for i in $(seq 1 24); do
-            STATUS=$(aws ecs describe-services --cluster "deepshield-project" --services "deepshield-service" \
-              --query 'services[0].status' --output text 2>/dev/null || echo "INACTIVE")
-            [ "$STATUS" = "INACTIVE" ] || [ "$STATUS" = "None" ] || [ -z "$STATUS" ] && break
-            echo "  Status: $STATUS (${i}/24)"
-            sleep 10
-          done
-
+          echo "  Task def: $TASK_DEF"
           aws ecs create-service \
             --cluster "deepshield-project" \
             --service-name "deepshield-service" \
             --task-definition "$TASK_DEF" \
-            --desired-count "$DESIRED" \
+            --desired-count 1 \
             --launch-type FARGATE \
-            --load-balancers "targetGroupArn=$TG_ARN,containerName=$CONTAINER,containerPort=8000" \
-            --network-configuration "awsvpcConfiguration={subnets=[$SVC_SUBNETS],securityGroups=[$SVC_SGS],assignPublicIp=$ASSIGN_IP}" \
+            --load-balancers "targetGroupArn=$TG_ARN,containerName=deepshield,containerPort=8000" \
+            --network-configuration "awsvpcConfiguration={subnets=[${{ secrets.PUBLIC_SUBNET_IDS }}],securityGroups=[${{ secrets.ALB_SECURITY_GROUP_ID }}],assignPublicIp=ENABLED}" \
             --health-check-grace-period-seconds 60 \
             --output json > /dev/null
-          echo "  Service recreated with ALB — waiting for it to become stable..."
-          aws ecs wait services-stable \
-            --cluster "deepshield-project" \
-            --services "deepshield-service"
-          echo "  Service is ACTIVE"
-        else
-          echo "ALB already attached (loadBalancers: $LB_COUNT) — skipping recreate"
+          echo "  Service created with ALB"
         fi
 
     - name: Deploy to ECS
