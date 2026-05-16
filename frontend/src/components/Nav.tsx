@@ -1,10 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
-import { Shield, Menu, X } from "lucide-react";
+import { useRouter, usePathname } from "next/navigation";
+import { Shield, Menu, X, LogOut, UserCircle } from "lucide-react";
+import { isAuthenticated, clearToken } from "@/lib/auth";
 
-const links = [
+const C = {
+  primary: "#4f46e5",
+  primaryDark: "#4338ca",
+  primaryLight: "#eef2ff",
+  borderAccent: "#c7d2fe",
+  heading: "#1e1b4b",
+  body: "#6b7280",
+  border: "#e0e7ff",
+};
+
+const NAV_LINKS = [
   { href: "/#how", label: "How it works" },
   { href: "/#features", label: "Features" },
   { href: "/integration", label: "Integration" },
@@ -12,7 +24,22 @@ const links = [
 ];
 
 export default function Nav() {
+  const router = useRouter();
+  const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const [authed, setAuthed] = useState(false);
+
+  // Read localStorage only on the client to avoid SSR mismatch
+  useEffect(() => {
+    setAuthed(isAuthenticated());
+  }, [pathname]); // re-check when route changes (after login/logout)
+
+  function handleLogout() {
+    clearToken();
+    setAuthed(false);
+    setOpen(false);
+    router.push("/");
+  }
 
   return (
     <nav
@@ -20,14 +47,15 @@ export default function Nav() {
       style={{ background: "#fff", borderBottom: "0.5px solid #e0e7ff" }}
     >
       <div className="flex justify-between items-center px-6 md:px-12 py-4">
+        {/* Logo */}
         <Link
           href="/"
           className="flex items-center gap-2.5 text-lg font-semibold no-underline"
-          style={{ color: "#1e1b4b" }}
+          style={{ color: C.heading }}
         >
           <div
             className="w-[34px] h-[34px] rounded-lg flex items-center justify-center text-white flex-shrink-0"
-            style={{ background: "#4f46e5" }}
+            style={{ background: C.primary }}
           >
             <Shield size={17} />
           </div>
@@ -36,28 +64,106 @@ export default function Nav() {
 
         {/* Desktop links */}
         <div className="hidden md:flex gap-8 items-center">
-          {links.map(({ href, label }) => (
+          {NAV_LINKS.map(({ href, label }) => (
             <Link
               key={href}
               href={href}
               className="text-sm transition-colors"
-              style={{ color: "#6b7280" }}
-              onMouseOver={(e) => (e.currentTarget.style.color = "#4f46e5")}
-              onMouseOut={(e) => (e.currentTarget.style.color = "#6b7280")}
+              style={{ color: C.body }}
+              onMouseOver={(e) => (e.currentTarget.style.color = C.primary)}
+              onMouseOut={(e) => (e.currentTarget.style.color = C.body)}
             >
               {label}
             </Link>
           ))}
-          <Link href="/demo">
-            <button
-              className="text-white border-0 px-5 py-2 rounded-lg text-sm cursor-pointer font-medium"
-              style={{ background: "#4f46e5" }}
-              onMouseOver={(e) => (e.currentTarget.style.background = "#4338ca")}
-              onMouseOut={(e) => (e.currentTarget.style.background = "#4f46e5")}
-            >
-              Live demo →
-            </button>
-          </Link>
+
+          {authed ? (
+            /* Authenticated: avatar chip + logout */
+            <div style={{ display: "flex", alignItems: "center", gap: "0.625rem" }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  background: C.primaryLight,
+                  border: `1px solid ${C.borderAccent}`,
+                  borderRadius: 20,
+                  padding: "3px 10px 3px 6px",
+                  fontSize: 12,
+                  color: C.primary,
+                  fontWeight: 500,
+                }}
+              >
+                <UserCircle size={14} />
+                Signed in
+              </div>
+              <button
+                onClick={handleLogout}
+                title="Sign out"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 5,
+                  background: "none",
+                  border: `1px solid ${C.border}`,
+                  borderRadius: 8,
+                  padding: "5px 10px",
+                  fontSize: 13,
+                  color: C.body,
+                  cursor: "pointer",
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.borderColor = C.primary;
+                  e.currentTarget.style.color = C.primary;
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.borderColor = C.border;
+                  e.currentTarget.style.color = C.body;
+                }}
+              >
+                <LogOut size={13} />
+                Sign out
+              </button>
+            </div>
+          ) : (
+            /* Not authenticated: Log in + Sign up */
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <Link href="/login">
+                <button
+                  style={{
+                    background: "none",
+                    border: `1px solid ${C.border}`,
+                    borderRadius: 8,
+                    padding: "5px 14px",
+                    fontSize: 13,
+                    fontWeight: 500,
+                    color: C.body,
+                    cursor: "pointer",
+                  }}
+                  onMouseOver={(e) => {
+                    e.currentTarget.style.borderColor = C.primary;
+                    e.currentTarget.style.color = C.primary;
+                  }}
+                  onMouseOut={(e) => {
+                    e.currentTarget.style.borderColor = C.border;
+                    e.currentTarget.style.color = C.body;
+                  }}
+                >
+                  Log in
+                </button>
+              </Link>
+              <Link href="/register">
+                <button
+                  className="text-white border-0 px-4 py-2 rounded-lg text-sm cursor-pointer font-medium"
+                  style={{ background: C.primary, minHeight: 34, fontSize: 13 }}
+                  onMouseOver={(e) => (e.currentTarget.style.background = C.primaryDark)}
+                  onMouseOut={(e) => (e.currentTarget.style.background = C.primary)}
+                >
+                  Sign up →
+                </button>
+              </Link>
+            </div>
+          )}
         </div>
 
         {/* Mobile hamburger */}
@@ -65,7 +171,7 @@ export default function Nav() {
           className="md:hidden"
           onClick={() => setOpen(!open)}
           aria-label="Toggle menu"
-          style={{ background: "none", border: "none", cursor: "pointer", color: "#1e1b4b", padding: 4 }}
+          style={{ background: "none", border: "none", cursor: "pointer", color: C.heading, padding: 4 }}
         >
           {open ? <X size={22} /> : <Menu size={22} />}
         </button>
@@ -84,33 +190,79 @@ export default function Nav() {
             background: "#fff",
           }}
         >
-          {links.map(({ href, label }) => (
+          {NAV_LINKS.map(({ href, label }) => (
             <Link
               key={href}
               href={href}
               onClick={() => setOpen(false)}
-              style={{ fontSize: 15, color: "#1e1b4b", textDecoration: "none", fontWeight: 500 }}
+              style={{ fontSize: 15, color: C.heading, textDecoration: "none", fontWeight: 500 }}
             >
               {label}
             </Link>
           ))}
-          <Link href="/demo" onClick={() => setOpen(false)}>
+
+          {/* Mobile divider */}
+          <div style={{ height: "0.5px", background: C.border }} />
+
+          {authed ? (
             <button
+              onClick={handleLogout}
               style={{
-                background: "#4f46e5",
-                color: "#fff",
-                border: "none",
-                padding: "0.625rem 1.25rem",
+                display: "flex",
+                alignItems: "center",
+                gap: 7,
+                background: "none",
+                border: `1px solid ${C.border}`,
                 borderRadius: 8,
+                padding: "0.625rem 1rem",
                 fontSize: 14,
-                fontWeight: 600,
+                fontWeight: 500,
+                color: C.body,
                 cursor: "pointer",
                 width: "100%",
               }}
             >
-              Live demo →
+              <LogOut size={15} />
+              Sign out
             </button>
-          </Link>
+          ) : (
+            <>
+              <Link href="/login" onClick={() => setOpen(false)}>
+                <button
+                  style={{
+                    background: "none",
+                    border: `1px solid ${C.border}`,
+                    borderRadius: 8,
+                    padding: "0.625rem 1.25rem",
+                    fontSize: 14,
+                    fontWeight: 500,
+                    color: C.heading,
+                    cursor: "pointer",
+                    width: "100%",
+                  }}
+                >
+                  Log in
+                </button>
+              </Link>
+              <Link href="/register" onClick={() => setOpen(false)}>
+                <button
+                  style={{
+                    background: C.primary,
+                    color: "#fff",
+                    border: "none",
+                    padding: "0.625rem 1.25rem",
+                    borderRadius: 8,
+                    fontSize: 14,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    width: "100%",
+                  }}
+                >
+                  Sign up →
+                </button>
+              </Link>
+            </>
+          )}
         </div>
       )}
     </nav>

@@ -6,9 +6,8 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - USE_SQLITE_RUNTIME=true
       - SECRET_KEY=your-secret-key-here
-      - DATABASE_URL=sqlite:///./deepshield.db
+      - DATABASE_URL=postgresql://deepshield:changeme@postgres:5432/deepshield
       - DEBUG=true
       - REDIS_HOST=redis
       - REDIS_PORT=6379
@@ -20,6 +19,8 @@ services:
       - ./ml_models:/app/ml_models
       - ./alerts_config.json:/app/alerts_config.json
     depends_on:
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck:
@@ -29,22 +30,22 @@ services:
       retries: 3
     restart: unless-stopped
 
-  # Optional: PostgreSQL database for production-like setup
   postgres:
-    image: postgres:15
+    image: postgres:16-alpine
     environment:
-      - POSTGRES_DB=deepshield
-      - POSTGRES_USER=deepshield
-      - POSTGRES_PASSWORD=deepshield_password
-    ports:
-      - "5432:5432"
+      POSTGRES_DB: deepshield
+      POSTGRES_USER: deepshield
+      POSTGRES_PASSWORD: changeme
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U deepshield"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
 
   frontend:
     build:
@@ -59,7 +60,6 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # Redis for caching (optional)
   redis:
     image: redis:7-alpine
     ports:
@@ -69,6 +69,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    restart: unless-stopped
 
 volumes:
   postgres_data:
