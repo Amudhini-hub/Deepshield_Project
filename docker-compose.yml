@@ -71,5 +71,46 @@ services:
       retries: 3
     restart: unless-stopped
 
+  celery_worker:
+    build: .
+    command: celery -A backend.celery_app worker --loglevel=info --concurrency=2
+    environment:
+      - DATABASE_URL=postgresql://deepshield:changeme@postgres:5432/deepshield
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      - MODEL_WEIGHTS_DIR=/app/ml_models
+      - ENABLE_GPU=false
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./ml_models:/app/ml_models
+    restart: unless-stopped
+    # ── GPU support (uncomment the block below to enable) ──────────────
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+  flower:
+    build: .
+    command: celery -A backend.celery_app flower --port=5555
+    ports:
+      - "5555:5555"
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      - FLOWER_BASIC_AUTH=admin:changeme123
+    depends_on:
+      - celery_worker
+    restart: unless-stopped
+
 volumes:
   postgres_data:

@@ -9,17 +9,12 @@ from backend.api import get_db
 from backend.database import Base
 from backend.main import app
 
-# Use file-based SQLite database that matches conftest setup
-# This ensures conftest can create tables and tests can access them
-SQLALCHEMY_DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./test.db")
+SQLALCHEMY_DATABASE_URL = "sqlite:///./test_api.db"
 
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False}
 )
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-# Tables should already be created by conftest, but ensure they exist
-Base.metadata.create_all(bind=engine)
 
 
 def override_get_db():
@@ -30,8 +25,17 @@ def override_get_db():
         db.close()
 
 
-app.dependency_overrides[get_db] = override_get_db
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def reset_db():
+    """Wire the DB override, create tables, yield, then restore and drop."""
+    app.dependency_overrides[get_db] = override_get_db
+    Base.metadata.create_all(bind=engine)
+    yield
+    Base.metadata.drop_all(bind=engine)
+    app.dependency_overrides.pop(get_db, None)
 
 
 class TestUserAuth:

@@ -29,7 +29,7 @@ class Config:
     FACE_RECOGNITION_THRESHOLD = 0.6
     VOICE_RECOGNITION_THRESHOLD = 0.7
     LIVENESS_CONFIDENCE_THRESHOLD = 0.85
-    DEEPFAKE_DETECTION_THRESHOLD = 0.8
+    DEEPFAKE_DETECTION_THRESHOLD = 0.5
 
     # Rate limiting
     MAX_AUTHENTICATION_ATTEMPTS = 5
@@ -60,6 +60,19 @@ class Config:
     DEEPFAKE_DETECTION_MODELS = ["xception", "resnet", "efficientnet"]
     DEEPFAKE_FRAME_SAMPLING_INTERVAL = 5
     DEEPFAKE_MIN_FRAMES = 10
+
+    # PyTorch ML model settings
+    DEEPFAKE_MODEL_WEIGHTS_DIR        = os.getenv("MODEL_WEIGHTS_DIR", "./ml_models")
+    XCEPTION_WEIGHTS_FILE             = os.getenv("XCEPTION_WEIGHTS",     "xception_ff++.pth")
+    EFFICIENTNET_WEIGHTS_FILE         = os.getenv("EFFICIENTNET_WEIGHTS",  "efficientnet_b4_ff++.pth")
+    DEEPFAKE_MAX_FRAMES               = int(os.getenv("DEEPFAKE_MAX_FRAMES", "20"))
+    DEEPFAKE_ENSEMBLE_XCEPTION_WEIGHT     = 0.6
+    DEEPFAKE_ENSEMBLE_EFFICIENTNET_WEIGHT = 0.4
+    ENABLE_GPU                        = os.getenv("ENABLE_GPU", "false").lower() == "true"
+
+    # Liveness detection model settings
+    LIVENESS_MODEL_WEIGHTS = os.getenv("LIVENESS_MODEL_WEIGHTS", "")
+    LIVENESS_THRESHOLD     = float(os.getenv("LIVENESS_THRESHOLD", "0.5"))
 
     # Anti-spoofing
     ANTI_SPOOFING_METHODS = [
@@ -122,6 +135,19 @@ class Config:
     # Redis cache settings
     REDIS_CACHE_TTL_SECONDS  = int(os.getenv("REDIS_CACHE_TTL_SECONDS",  "3600"))
     REDIS_SESSION_TTL_HOURS  = int(os.getenv("REDIS_SESSION_TTL_HOURS",  "24"))
+
+    # Celery — broker and result backend both use Redis
+    _redis_auth = f":{REDIS_PASSWORD}@" if REDIS_PASSWORD else ""
+    CELERY_BROKER_URL     = f"redis://{_redis_auth}{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}"
+    CELERY_RESULT_BACKEND = CELERY_BROKER_URL
+    CELERY_TASK_TIME_LIMIT      = 120
+    CELERY_TASK_SOFT_TIME_LIMIT = 90
+
+    @classmethod
+    def get_celery_broker_url(cls) -> str:
+        """Build Redis URL for Celery broker / result backend."""
+        auth = f":{cls.REDIS_PASSWORD}@" if cls.REDIS_PASSWORD else ""
+        return f"redis://{auth}{cls.REDIS_HOST}:{cls.REDIS_PORT}/{cls.REDIS_DB}"
 
     # API settings
     API_HOST    = os.getenv("API_HOST", "0.0.0.0")

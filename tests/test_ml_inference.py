@@ -1,328 +1,309 @@
 """
-ML Model Integration Tests
-Tests for deepfake detection, liveness detection, and model loading
+ML stack tests — PyTorch / timm pipeline.
+
+Marks:
+  (no mark)     — fast, no model weights needed (dataclass shapes, preprocessing API)
+  @pytest.mark.slow — loads or runs actual PyTorch models (~100 MB download on first run)
+
+Run all:  pytest tests/test_ml_inference.py -v
+Skip slow: pytest tests/test_ml_inference.py -v -m "not slow"
 """
+
+import os
 
 import numpy as np
 import pytest
 
+# ---------------------------------------------------------------------------
+# Optional dependency guard
+# ---------------------------------------------------------------------------
 try:
-    from backend.services.deepfake_detection import DeepfakeDetector
-    from backend.services.liveness_detection import LivenessDetector
-    from backend.services.model_loader import (
-        InferencePreprocessor,
-        ModelRegistry,
-        get_model_loader,
-    )
+    import torch
+    import torch.nn as nn
+
+    from backend.ml.model_loader import ModelLoader
+    from backend.ml.preprocessing import preprocess_batch
+    from backend.services.deepfake_detection import DeepfakeDetector, DeepfakeResult
+    from backend.services.liveness_detection import LivenessDetector, LivenessResult
 
     ML_AVAILABLE = True
-except (ImportError, Exception):
+except ImportError:
     ML_AVAILABLE = False
 
 pytestmark = pytest.mark.skipif(
-    not ML_AVAILABLE, reason="ML dependencies (tensorflow/opencv) not available"
+    not ML_AVAILABLE, reason="PyTorch / timm not installed"
 )
 
 
-class TestModelRegistry:
-    """Test ML model registry"""
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
 
-    def test_model_registry_contains_deepfake_models(self):
-        """Test deepfake models are registered"""
-        models = ModelRegistry.list_models("deepfake")
-        assert len(models) > 0
-        assert "deepfake_mobilenetv2" in models
+@pytest.fixture(scope="module")
+def dummy_frames():
+    """10 random BGR frames at 224×224 — no model loading needed."""
+    return [np.random.randint(0, 255, (224, 224, 3), dtype=np.uint8) for _ in range(10)]
 
-    def test_model_registry_contains_liveness_models(self):
-        """Test liveness models are registered"""
-        models = ModelRegistry.list_models("liveness")
-        assert len(models) > 0
-        assert "liveness_mobilenet" in models
 
-    def test_get_model_info(self):
-        """Test getting model information"""
-        info = ModelRegistry.get_model_info("deepfake_mobilenetv2")
-        assert info is not None
-        assert info["type"] == "deepfake"
-        assert "url" in info
-        assert "input_shape" in info
+@pytest.fixture(scope="module")
+def synthetic_video(tmp_path_factory):
+    """Write a 20-frame synthetic MP4 with OpenCV; yields the file path."""
+    import cv2
 
-    def test_get_default_model_deepfake(self):
-        """Test getting default deepfake model"""
-        model = ModelRegistry.get_default_model("deepfake")
-        assert model == "deepfake_mobilenetv2"
+    path = str(tmp_path_factory.mktemp("video") / "synth.mp4")
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    writer = cv2.VideoWriter(path, fourcc, 10.0, (224, 224))
+    for _ in range(20):
+        frame = np.random.randint(0, 255, (224, 224, 3), dtype=np.uint8)
+        writer.write(frame)
+    writer.release()
+    return path
 
-    def test_get_default_model_liveness(self):
-        """Test getting default liveness model"""
-        model = ModelRegistry.get_default_model("liveness")
-        assert model == "liveness_mobilenet"
 
+# ---------------------------------------------------------------------------
+# ModelLoader — thread-safe singleton
+# ---------------------------------------------------------------------------
 
 class TestModelLoader:
-    """Test ML model loader"""
+    def test_get_device_returns_torch_device(self):
+        assert isinstance(ModelLoader.get_device(), torch.device)
 
-    def test_model_loader_singleton(self):
-        """Test model loader singleton pattern"""
-        loader1 = get_model_loader()
-        loader2 = get_model_loader()
-        assert loader1 is loader2
+    def test_load_weights_missing_file_is_silent(self):
+        """load_weights must not raise when the weights file does not exist."""
+        ModelLoader.get_efficientnet_b0()  # ensure model is cached first
+        ModelLoader.load_weights("efficientnet_b0", "/nonexistent/weights.pth")
 
-    def test_model_loader_initialization(self):
-        """Test model loader initialization"""
-        loader = get_model_loader()
-        assert loader is not None
-        assert hasattr(loader, "load_model")
-        assert hasattr(loader, "list_available_models")
+    @pytest.mark.slow
+    def test_get_xception_singleton(self):
+        assert ModelLoader.get_xception() is ModelLoader.get_xception()
 
-    def test_list_available_models(self):
-        """Test listing available models"""
-        loader = get_model_loader()
-        models = loader.list_available_models("deepfake")
-        assert isinstance(models, dict)
-        assert len(models) > 0
+    @pytest.mark.slow
+    def test_get_efficientnet_singleton(self):
+        assert ModelLoader.get_efficientnet() is ModelLoader.get_efficientnet()
 
-    def test_get_cache_stats(self):
-        """Test getting cache statistics"""
-        loader = get_model_loader()
-        stats = loader.get_cache_stats()
-        assert "loaded_models" in stats
-        assert "model_count" in stats
-        assert "cached_in_redis" in stats
+    @pytest.mark.slow
+    def test_get_efficientnet_b0_singleton(self):
+        assert ModelLoader.get_efficientnet_b0() is ModelLoader.get_efficientnet_b0()
 
-    def test_clear_cache(self):
-        """Test clearing model cache"""
-        loader = get_model_loader()
-        stats_before = loader.get_cache_stats()
-        loader.clear_cache()
-        stats_after = loader.get_cache_stats()
-        assert stats_after["model_count"] == 0
+    @pytest.mark.slow
+    def test_all_models_in_eval_mode(self):
+        for getter in (
+            ModelLoader.get_xception,
+            ModelLoader.get_efficientnet,
+            ModelLoader.get_efficientnet_b0,
+        ):
+            model = getter()
+            assert not model.training, f"{model.__class__.__name__} must be in eval mode"
 
-
-class TestInferencePreprocessor:
-    """Test inference preprocessing"""
-
-    def test_preprocess_image(self):
-        """Test image preprocessing"""
-        # Create dummy image (480x640x3)
-        image = np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8)
-
-        processed = InferencePreprocessor.preprocess_image(
-            image, target_size=(224, 224)
-        )
-
-        assert processed is not None
-        assert processed.shape == (1, 224, 224, 3)
-        assert processed.min() >= 0.0
-        assert processed.max() <= 1.0
-
-    def test_preprocess_frames(self):
-        """Test batch frame preprocessing"""
-        # Create dummy frames
-        frames = [
-            np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8) for _ in range(5)
-        ]
-
-        processed = InferencePreprocessor.preprocess_frames(
-            frames, target_size=(224, 224)
-        )
-
-        assert processed is not None
-        assert processed.shape == (5, 224, 224, 3)
-        assert processed.min() >= 0.0
-        assert processed.max() <= 1.0
-
-    def test_preprocess_frames_empty(self):
-        """Test preprocessing empty frame list"""
-        processed = InferencePreprocessor.preprocess_frames([], target_size=(224, 224))
-        assert processed is None
+    @pytest.mark.slow
+    def test_models_are_nn_modules(self):
+        for getter in (
+            ModelLoader.get_xception,
+            ModelLoader.get_efficientnet,
+            ModelLoader.get_efficientnet_b0,
+        ):
+            assert isinstance(getter(), nn.Module)
 
 
-class TestDeepfakeDetector:
-    """Test deepfake detection"""
+# ---------------------------------------------------------------------------
+# Preprocessing
+# ---------------------------------------------------------------------------
 
-    def test_deepfake_detector_initialization(self):
-        """Test deepfake detector initialization"""
-        detector = DeepfakeDetector()
-        assert detector is not None
-        assert hasattr(detector, "detect_from_frames")
+class TestPreprocessing:
+    def test_batch_shape(self, dummy_frames):
+        device = torch.device("cpu")
+        batch = preprocess_batch(dummy_frames, (224, 224), device)
+        assert batch.shape == (len(dummy_frames), 3, 224, 224)
 
-    def test_deepfake_detector_no_frames(self):
-        """Test deepfake detection with no frames"""
-        detector = DeepfakeDetector()
-        result = detector.detect_from_frames([])
+    def test_batch_on_cpu(self, dummy_frames):
+        device = torch.device("cpu")
+        batch = preprocess_batch(dummy_frames, (224, 224), device)
+        assert batch.device.type == "cpu"
 
-        assert result is not None
-        assert result.confidence == 0.0
-        assert result.frame_count == 0
-        assert result.details.get("error") == "No frames provided"
+    def test_batch_value_range(self, dummy_frames):
+        device = torch.device("cpu")
+        batch = preprocess_batch(dummy_frames, (224, 224), device)
+        # Normalized with mean/std 0.5 → values in roughly [-2, 2]
+        assert float(batch.min()) >= -3.0
+        assert float(batch.max()) <= 3.0
 
-    def test_deepfake_detector_single_frame(self):
-        """Test deepfake detection with single frame"""
-        detector = DeepfakeDetector()
+    def test_batch_different_target_sizes(self, dummy_frames):
+        device = torch.device("cpu")
+        for h, w in ((224, 224), (299, 299), (380, 380)):
+            batch = preprocess_batch(dummy_frames, (h, w), device)
+            assert batch.shape == (len(dummy_frames), 3, h, w)
+
+    def test_single_frame_batch(self):
+        device = torch.device("cpu")
         frame = np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8)
+        batch = preprocess_batch([frame], (224, 224), device)
+        assert batch.shape == (1, 3, 224, 224)
 
-        result = detector.detect_from_frames([frame])
 
-        assert result is not None
-        assert isinstance(result.is_deepfake, bool)
-        assert 0.0 <= result.confidence <= 1.0
-        assert result.frame_count == 1
-        assert "method" in result.details
+# ---------------------------------------------------------------------------
+# LivenessResult dataclass + backward-compat aliases
+# ---------------------------------------------------------------------------
 
-    def test_deepfake_detector_multiple_frames(self):
-        """Test deepfake detection with multiple frames"""
-        detector = DeepfakeDetector()
-        frames = [
-            np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8) for _ in range(10)
-        ]
+class TestLivenessResult:
+    def _make(self, is_live=True):
+        return LivenessResult(
+            is_live=is_live,
+            confidence=0.9 if is_live else 0.2,
+            detection_method="efficientnet_b0",
+            frame_count=5,
+            details={"live_score": 0.9, "threshold": 0.5, "frames_analysed": 5},
+            anomalies=[],
+        )
 
-        result = detector.detect_from_frames(frames)
+    def test_is_alive_alias_true(self):
+        assert self._make(True).is_alive is True
 
-        assert result is not None
-        assert isinstance(result.is_deepfake, bool)
-        assert 0.0 <= result.confidence <= 1.0
-        assert result.frame_count == 10
+    def test_is_alive_alias_false(self):
+        assert self._make(False).is_alive is False
 
-    def test_deepfake_detector_has_anomalies(self):
-        """Test deepfake detector identifies anomalies"""
-        detector = DeepfakeDetector()
-        frames = [
-            np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8) for _ in range(10)
-        ]
+    def test_challenge_type_alias(self):
+        assert self._make().challenge_type == "efficientnet_b0"
 
-        result = detector.detect_from_frames(frames)
+    def test_all_tasks_py_attributes_present(self):
+        r = self._make()
+        for attr in ("is_alive", "confidence", "challenge_type", "frame_count", "details"):
+            assert hasattr(r, attr), f"LivenessResult missing attribute: {attr}"
 
-        assert isinstance(result.anomalies, list)
-        # Anomalies field should exist (may be empty)
+    def test_anomalies_field(self):
+        r = self._make()
+        assert isinstance(r.anomalies, list)
 
+    def test_processing_time_defaults_to_zero(self):
+        r = self._make()
+        assert r.processing_time_ms == 0.0
+
+
+# ---------------------------------------------------------------------------
+# DeepfakeResult dataclass
+# ---------------------------------------------------------------------------
+
+class TestDeepfakeResult:
+    def _make(self):
+        return DeepfakeResult(
+            is_deepfake=False,
+            confidence=0.3,
+            detection_method="xception_efficientnet_ensemble",
+            frame_count=10,
+            details={"xception_score": 0.3, "efficientnet_score": 0.3},
+            anomalies=[],
+        )
+
+    def test_fields_present(self):
+        r = self._make()
+        assert r.is_deepfake is False
+        assert r.frame_count == 10
+        assert isinstance(r.anomalies, list)
+
+    def test_processing_time_defaults_to_zero(self):
+        assert self._make().processing_time_ms == 0.0
+
+
+# ---------------------------------------------------------------------------
+# LivenessDetector
+# ---------------------------------------------------------------------------
 
 class TestLivenessDetector:
-    """Test liveness detection"""
-
-    def test_liveness_detector_initialization(self):
-        """Test liveness detector initialization"""
+    @pytest.mark.slow
+    def test_detect_from_frame_returns_liveness_result(self):
         detector = LivenessDetector()
-        assert detector is not None
-        assert hasattr(detector, "detect_from_video_frames")
+        frame = np.random.randint(0, 255, (224, 224, 3), dtype=np.uint8)
+        result = detector.detect_from_frame(frame)
+        assert isinstance(result, LivenessResult)
 
-    def test_liveness_detector_no_frames(self):
-        """Test liveness detection with no frames"""
+    @pytest.mark.slow
+    def test_detect_from_frame_confidence_in_range(self):
         detector = LivenessDetector()
-        result = detector.detect_from_video_frames([])
-
-        assert result is not None
-        assert result.confidence == 0.0
-        assert result.frame_count == 0
-        assert result.details.get("error") == "No frames provided"
-
-    def test_liveness_detector_single_frame(self):
-        """Test liveness detection with single frame"""
-        detector = LivenessDetector()
-        frame = np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8)
-
-        result = detector.detect_from_video_frames([frame])
-
-        assert result is not None
-        assert isinstance(result.is_alive, bool)
+        frame = np.random.randint(0, 255, (224, 224, 3), dtype=np.uint8)
+        result = detector.detect_from_frame(frame)
         assert 0.0 <= result.confidence <= 1.0
+
+    @pytest.mark.slow
+    def test_detect_from_frame_single_frame_count(self):
+        detector = LivenessDetector()
+        frame = np.random.randint(0, 255, (224, 224, 3), dtype=np.uint8)
+        result = detector.detect_from_frame(frame)
         assert result.frame_count == 1
-        assert "method" in result.details
 
-    def test_liveness_detector_multiple_frames(self):
-        """Test liveness detection with multiple frames"""
+    @pytest.mark.slow
+    def test_detect_from_frame_details_keys(self):
         detector = LivenessDetector()
-        frames = [
-            np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8) for _ in range(30)
-        ]
+        frame = np.random.randint(0, 255, (224, 224, 3), dtype=np.uint8)
+        result = detector.detect_from_frame(frame)
+        for key in ("live_score", "threshold", "frames_analysed"):
+            assert key in result.details, f"Missing detail key: {key}"
 
-        result = detector.detect_from_video_frames(frames)
-
-        assert result is not None
-        assert isinstance(result.is_alive, bool)
+    @pytest.mark.slow
+    def test_detect_from_video_with_synthetic_file(self, synthetic_video):
+        detector = LivenessDetector()
+        result = detector.detect_from_video(synthetic_video, max_frames=10)
+        assert isinstance(result, LivenessResult)
+        assert result.frame_count > 0
         assert 0.0 <= result.confidence <= 1.0
-        assert result.frame_count == 30
 
-    def test_liveness_detector_consistency(self):
-        """Test liveness detector returns consistent results"""
+    @pytest.mark.slow
+    def test_detect_from_video_missing_file_raises(self):
         detector = LivenessDetector()
-        frames = [
-            np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8) for _ in range(10)
-        ]
+        with pytest.raises((ValueError, Exception)):
+            detector.detect_from_video("/nonexistent/video.mp4")
 
-        result1 = detector.detect_from_video_frames(frames)
-        result2 = detector.detect_from_video_frames(frames)
-
-        # Results should be the same for same input
-        assert result1.is_alive == result2.is_alive
-        assert abs(result1.confidence - result2.confidence) < 0.01
-
-
-class TestMLIntegration:
-    """Integration tests for ML services"""
-
-    def test_deepfake_and_liveness_together(self):
-        """Test using both deepfake and liveness detectors"""
-        deepfake_detector = DeepfakeDetector()
-        liveness_detector = LivenessDetector()
-
-        frames = [
-            np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8) for _ in range(10)
-        ]
-
-        deepfake_result = deepfake_detector.detect_from_frames(frames)
-        liveness_result = liveness_detector.detect_from_video_frames(frames)
-
-        assert deepfake_result is not None
-        assert liveness_result is not None
-
-        # Both should produce confidence scores
-        assert 0.0 <= deepfake_result.confidence <= 1.0
-        assert 0.0 <= liveness_result.confidence <= 1.0
-
-    def test_model_loading_with_cache(self):
-        """Test model loader cache API (skips actual download)"""
-        loader = get_model_loader(cache_models=True)
-
-        stats_before = loader.get_cache_stats()
-        assert "model_count" in stats_before
-
-        # Cache may already have models from earlier tests (singleton), just verify the key exists
-        assert stats_before["model_count"] >= 0
+    @pytest.mark.slow
+    def test_tasks_py_attribute_access(self, synthetic_video):
+        """Reproduce exactly what tasks.py does after calling detect_from_video."""
+        detector = LivenessDetector()
+        result = detector.detect_from_video(synthetic_video, max_frames=5)
+        # tasks.py reads these attribute names directly
+        _ = result.is_alive
+        _ = result.confidence
+        _ = result.challenge_type
+        _ = result.frame_count
+        _ = result.details
 
 
-class TestModelErrors:
-    """Test error handling in ML services"""
+# ---------------------------------------------------------------------------
+# DeepfakeDetector
+# ---------------------------------------------------------------------------
 
-    def test_deepfake_detector_handles_invalid_frames(self):
-        """Test deepfake detector handles invalid frames"""
+class TestDeepfakeDetector:
+    @pytest.mark.slow
+    def test_detect_from_frames_raises_not_implemented(self):
         detector = DeepfakeDetector()
+        with pytest.raises(NotImplementedError):
+            detector.detect_from_frames([])
 
-        # Try with None
-        try:
-            result = detector.detect_from_frames([None])
-            assert result is not None
-        except Exception:
-            # Should handle gracefully
-            pass
+    @pytest.mark.slow
+    def test_detect_from_video_with_synthetic_file(self, synthetic_video):
+        detector = DeepfakeDetector()
+        result = detector.detect_from_video(synthetic_video, max_frames=10)
+        assert isinstance(result.is_deepfake, bool)
+        assert 0.0 <= result.confidence <= 1.0
+        assert result.frame_count > 0
 
-    def test_liveness_detector_handles_invalid_frames(self):
-        """Test liveness detector handles invalid frames"""
-        detector = LivenessDetector()
+    @pytest.mark.slow
+    def test_detect_from_video_details_keys(self, synthetic_video):
+        detector = DeepfakeDetector()
+        result = detector.detect_from_video(synthetic_video, max_frames=10)
+        for key in ("xception_score", "efficientnet_score", "ensemble_method", "frames_analysed"):
+            assert key in result.details, f"Missing detail key: {key}"
 
-        # Try with None
-        try:
-            result = detector.detect_from_video_frames([None])
-            assert result is not None
-        except Exception:
-            # Should handle gracefully
-            pass
+    @pytest.mark.slow
+    def test_detect_from_video_anomalies_is_list(self, synthetic_video):
+        detector = DeepfakeDetector()
+        result = detector.detect_from_video(synthetic_video, max_frames=5)
+        assert isinstance(result.anomalies, list)
 
-    def test_model_loader_invalid_model_name(self):
-        """Test model loader with invalid model name"""
-        loader = get_model_loader()
-        model = loader.load_model("invalid_model_name")
-        assert model is None
+    @pytest.mark.slow
+    def test_detect_from_video_missing_file_raises(self):
+        detector = DeepfakeDetector()
+        with pytest.raises((ValueError, Exception)):
+            detector.detect_from_video("/nonexistent/video.mp4")
 
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+    @pytest.mark.slow
+    def test_detection_method_label(self, synthetic_video):
+        detector = DeepfakeDetector()
+        result = detector.detect_from_video(synthetic_video, max_frames=5)
+        assert result.detection_method == "xception_efficientnet_ensemble"

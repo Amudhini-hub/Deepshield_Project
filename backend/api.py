@@ -3,11 +3,14 @@ DeepShield API Router
 Complete REST API implementation for authentication, biometrics, and risk assessment
 """
 
+import base64
 import logging
 import os
 import tempfile
 from datetime import datetime
 from typing import Optional
+
+from celery.result import AsyncResult
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
@@ -50,34 +53,18 @@ from backend.services.authentication import (
 from backend.services.behavioral_biometrics import BehavioralBiometricsEngine
 from backend.services.risk_assessment import RiskAssessmentEngine
 
-# ML services - optional
-try:
-    from backend.services.deepfake_detection import DeepfakeDetector
-    from backend.services.liveness_detection import LivenessDetector
+# ML inference runs inside Celery workers — no module-level singleton needed here.
+ML_AVAILABLE = True
 
-    ML_AVAILABLE = True
-except (ImportError, Exception):
-    ML_AVAILABLE = False
-    DeepfakeDetector = None
-    LivenessDetector = None
+# Celery tasks
+from backend.celery_app import celery_app
+from backend.tasks import detect_deepfake_task, detect_liveness_task
 
 logger = logging.getLogger(__name__)
 
 config = get_config()
 biometric_engine = BehavioralBiometricsEngine(config=config.get_config_dict())
 risk_engine = RiskAssessmentEngine(config=config.get_config_dict())
-
-# Initialize ML services only if available
-deepfake_detector = None
-liveness_detector = None
-if ML_AVAILABLE:
-    try:
-        deepfake_detector = DeepfakeDetector(config=config.get_config_dict())
-        liveness_detector = LivenessDetector(config=config.get_config_dict())
-        logger.info("ML services initialized successfully")
-    except Exception as e:
-        logger.warning(f"Could not initialize ML services: {e}")
-        ML_AVAILABLE = False
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/users/login", auto_error=False)
 api_router = APIRouter(tags=["deepshield"])
@@ -654,183 +641,107 @@ def _extract_frames(video_path: str, max_frames: int) -> list:
 
 @api_router.post(
     "/deepfake/detect",
-    status_code=status.HTTP_200_OK,
-    summary="Detect deepfakes in video",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Detect deepfakes in video (async)",
 )
 async def detect_deepfake(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict:
-    """Detect deepfakes in uploaded video file."""
-    if not CV2_AVAILABLE or not ML_AVAILABLE:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Deepfake detection service not available",
-        )
+    """Queue deepfake detection for an uploaded video. Poll GET /tasks/{task_id} for results."""
+    video_data = await file.read()
+    _validate_video_upload(file, video_data)
 
-    tmp_fd, video_path = None, None
+    video_b64 = base64.b64encode(video_data).decode("ascii")
+    task = detect_deepfake_task.delay(video_b64, current_user.id)
+
+    # Register task ID in Redis so the polling endpoint can return 404 for unknown IDs.
     try:
-        video_data = await file.read()
-        _validate_video_upload(file, video_data)
+        from backend.redis_manager import get_redis_manager
+        rm = get_redis_manager()
+        if rm.redis_client:
+            rm.redis_client.setex(f"ds:task:{task.id}", 7200, "1")
+    except Exception:
+        pass
 
-        suffix = os.path.splitext(file.filename or "video.mp4")[1] or ".mp4"
-        tmp_fd, video_path = tempfile.mkstemp(suffix=suffix)
-        with os.fdopen(tmp_fd, "wb") as f:
-            f.write(video_data)
-        tmp_fd = None  # fd is closed by fdopen
-
-        frames, face_found = _extract_frames(video_path, max_frames=30)
-
-        if len(frames) < MIN_FRAMES_REQUIRED:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Could not extract enough frames (got {len(frames)}, need {MIN_FRAMES_REQUIRED}). Check that the video is valid.",
-            )
-
-        if not face_found:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="No face detected in the video. Please upload a video containing a human face.",
-            )
-
-        result = deepfake_detector.detect_from_frames(frames)
-
-        crud.create_audit_log(
-            db,
-            str(current_user.id),
-            "DEEPFAKE_DETECTION",
-            {
-                "is_deepfake": result.is_deepfake,
-                "confidence": result.confidence,
-                "frame_count": len(frames),
-                "timestamp": datetime.utcnow().isoformat(),
-            },
-        )
-
-        logger.info(
-            f"Deepfake detection for user {current_user.id}: is_deepfake={result.is_deepfake} confidence={result.confidence:.3f}"
-        )
-        return {
-            "user_id": current_user.id,
-            "is_deepfake": result.is_deepfake,
-            "confidence": result.confidence,
-            "detection_method": result.detection_method,
-            "frame_count": len(frames),
-            "details": result.details,
-            "anomalies": result.anomalies,
-            "timestamp": datetime.utcnow().isoformat(),
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error in deepfake detection: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Deepfake detection failed: {str(e)}",
-        )
-    finally:
-        if tmp_fd is not None:
-            try:
-                os.close(tmp_fd)
-            except OSError:
-                pass
-        if video_path and os.path.exists(video_path):
-            try:
-                os.remove(video_path)
-            except Exception as e:
-                logger.warning(f"Failed to clean up video file: {e}")
+    crud.create_audit_log(
+        db,
+        str(current_user.id),
+        "DEEPFAKE_DETECTION_QUEUED",
+        {"task_id": task.id, "timestamp": datetime.utcnow().isoformat()},
+    )
+    logger.info(f"Deepfake detection queued: task_id={task.id} user_id={current_user.id}")
+    return {"task_id": task.id, "status": "queued"}
 
 
 @api_router.post(
     "/liveness/detect",
-    status_code=status.HTTP_200_OK,
-    summary="Detect liveness in video",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Detect liveness in video (async)",
 )
 async def detect_liveness(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict:
-    """Detect liveness in uploaded video file."""
-    if not CV2_AVAILABLE or not ML_AVAILABLE:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Liveness detection service not available",
-        )
+    """Queue liveness detection for an uploaded video. Poll GET /tasks/{task_id} for results."""
+    video_data = await file.read()
+    _validate_video_upload(file, video_data)
 
-    tmp_fd, video_path = None, None
+    video_b64 = base64.b64encode(video_data).decode("ascii")
+    task = detect_liveness_task.delay(video_b64, current_user.id)
+
     try:
-        video_data = await file.read()
-        _validate_video_upload(file, video_data)
+        from backend.redis_manager import get_redis_manager
+        rm = get_redis_manager()
+        if rm.redis_client:
+            rm.redis_client.setex(f"ds:task:{task.id}", 7200, "1")
+    except Exception:
+        pass
 
-        suffix = os.path.splitext(file.filename or "video.mp4")[1] or ".mp4"
-        tmp_fd, video_path = tempfile.mkstemp(suffix=suffix)
-        with os.fdopen(tmp_fd, "wb") as f:
-            f.write(video_data)
-        tmp_fd = None
+    crud.create_audit_log(
+        db,
+        str(current_user.id),
+        "LIVENESS_DETECTION_QUEUED",
+        {"task_id": task.id, "timestamp": datetime.utcnow().isoformat()},
+    )
+    logger.info(f"Liveness detection queued: task_id={task.id} user_id={current_user.id}")
+    return {"task_id": task.id, "status": "queued"}
 
-        frames, face_found = _extract_frames(video_path, max_frames=60)
 
-        if len(frames) < MIN_FRAMES_REQUIRED:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Could not extract enough frames (got {len(frames)}, need {MIN_FRAMES_REQUIRED}). Check that the video is valid.",
-            )
+# ── Task polling ───────────────────────────────────────────────────────────────
 
-        if not face_found:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="No face detected in the video. Please upload a video containing a human face.",
-            )
 
-        result = liveness_detector.detect_from_video_frames(frames)
-
-        crud.create_audit_log(
-            db,
-            str(current_user.id),
-            "LIVENESS_DETECTION",
-            {
-                "is_alive": result.is_alive,
-                "confidence": result.confidence,
-                "frame_count": len(frames),
-                "timestamp": datetime.utcnow().isoformat(),
-            },
-        )
-
-        logger.info(
-            f"Liveness detection for user {current_user.id}: is_alive={result.is_alive} confidence={result.confidence:.3f}"
-        )
-        return {
-            "user_id": current_user.id,
-            "is_alive": result.is_alive,
-            "confidence": result.confidence,
-            "challenge_type": result.challenge_type,
-            "frame_count": result.frame_count,
-            "details": result.details,
-            "timestamp": datetime.utcnow().isoformat(),
-        }
-
+@api_router.get(
+    "/tasks/{task_id}",
+    status_code=status.HTTP_200_OK,
+    summary="Poll async task status",
+)
+async def get_task_status(task_id: str) -> dict:
+    """Return the current state of a queued detection task."""
+    # Verify the task was actually created by this service.
+    try:
+        from backend.redis_manager import get_redis_manager
+        rm = get_redis_manager()
+        if rm.redis_client and not rm.redis_client.exists(f"ds:task:{task_id}"):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Error in liveness detection: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Liveness detection failed: {str(e)}",
-        )
-    finally:
-        if tmp_fd is not None:
-            try:
-                os.close(tmp_fd)
-            except OSError:
-                pass
-        if video_path and os.path.exists(video_path):
-            try:
-                os.remove(video_path)
-            except Exception as e:
-                logger.warning(f"Failed to clean up video file: {e}")
+    except Exception:
+        pass  # Redis unavailable — allow through, Celery will report PENDING
+
+    result = AsyncResult(task_id, app=celery_app)
+    state = result.state
+
+    response: dict = {"task_id": task_id, "status": state, "result": None, "error": None}
+
+    if state == "SUCCESS":
+        response["result"] = result.result
+    elif state == "FAILURE":
+        response["error"] = str(result.result)
+
+    return response
 
 
 # ==================== ANALYTICS ENDPOINTS ====================

@@ -1,5 +1,8 @@
 """
 Test Redis Integration and Rate Limiting
+
+These tests require a live Redis instance.  They are skipped automatically
+when Redis is not reachable so the rest of the suite can still run.
 """
 
 from datetime import datetime, timedelta
@@ -7,6 +10,21 @@ from datetime import datetime, timedelta
 import pytest
 
 from backend.redis_manager import RedisManager
+
+
+def _redis_available() -> bool:
+    try:
+        import redis
+        r = redis.Redis(host="localhost", port=6379, db=0, socket_connect_timeout=1)
+        r.ping()
+        return True
+    except Exception:
+        return False
+
+
+pytestmark = pytest.mark.skipif(
+    not _redis_available(), reason="Redis not reachable on localhost:6379"
+)
 
 
 class TestRedisManager:
