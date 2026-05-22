@@ -3,6 +3,7 @@ import logging
 import os
 import tempfile
 import time
+from datetime import datetime, timezone
 
 from celery.exceptions import SoftTimeLimitExceeded
 
@@ -41,7 +42,8 @@ def _get_liveness_detector():
     time_limit=120,
     soft_time_limit=90,
 )
-def detect_deepfake_task(self, video_b64: str, user_id: int) -> dict:
+def detect_deepfake_task(self, video_b64: str, user_id: int,
+                         generate_heatmap: bool = True) -> dict:
     """Run deepfake detection on a base64-encoded video. Returns a JSON-safe dict."""
     start = time.monotonic()
     logger.info(f"[deepfake] task_id={self.request.id} user_id={user_id} started")
@@ -54,7 +56,9 @@ def detect_deepfake_task(self, video_b64: str, user_id: int) -> dict:
             f.write(video_bytes)
         tmp_fd = None  # fd closed by fdopen
 
-        result = _get_deepfake_detector().detect_from_video(video_path, max_frames=30)
+        result = _get_deepfake_detector().detect_from_video(
+            video_path, max_frames=30, generate_heatmap=generate_heatmap
+        )
 
         duration_ms = int((time.monotonic() - start) * 1000)
         logger.info(
@@ -62,13 +66,16 @@ def detect_deepfake_task(self, video_b64: str, user_id: int) -> dict:
             f"completed is_deepfake={result.is_deepfake} duration_ms={duration_ms}"
         )
         return {
-            "user_id": user_id,
-            "is_deepfake": result.is_deepfake,
-            "confidence": result.confidence,
-            "detection_method": result.detection_method,
-            "frame_count": result.frame_count,
-            "details": result.details,
-            "anomalies": result.anomalies,
+            "user_id":             user_id,
+            "is_deepfake":         result.is_deepfake,
+            "confidence":          result.confidence,
+            "detection_method":    result.detection_method,
+            "frame_count":         result.frame_count,
+            "details":             result.details,
+            "anomalies":           result.anomalies,
+            "heatmap_frame":       result.heatmap_frame,
+            "heatmap_frame_index": result.heatmap_frame_index,
+            "timestamp":           datetime.now(timezone.utc).isoformat(),
         }
 
     except SoftTimeLimitExceeded as exc:
@@ -126,6 +133,7 @@ def detect_liveness_task(self, video_b64: str, user_id: int) -> dict:
             "challenge_type": result.challenge_type,
             "frame_count": result.frame_count,
             "details": result.details,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
     except SoftTimeLimitExceeded as exc:

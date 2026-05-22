@@ -7,12 +7,14 @@ Public interface is unchanged — backend/tasks.py calls:
 and reads result attributes directly (is_deepfake, confidence, …).
 """
 
+import base64
 import logging
 import os
 import time
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 
@@ -39,6 +41,8 @@ class DeepfakeResult:
     details: Dict
     anomalies: List[str]
     processing_time_ms: float = 0.0
+    heatmap_frame: Optional[str] = None        # base64 JPEG
+    heatmap_frame_index: Optional[int] = None
 
 
 # ---------------------------------------------------------------------------
@@ -98,20 +102,21 @@ class DeepfakeDetector:
         model: torch.nn.Module,
         batch: torch.Tensor,
         name: str,
-    ) -> Optional[float]:
+    ) -> Tuple[Optional[float], List[float]]:
         """
         Run *model* on *batch* inside torch.no_grad().
-        Returns mean fake-class probability (class index 1), or None on error.
+        Returns (mean_score, per_frame_scores).
+        mean_score is None on error; per_frame_scores is [] on error.
         """
         try:
             with torch.no_grad():
                 logits = model(batch)                   # (N, 2)
                 probs  = F.softmax(logits, dim=1)       # (N, 2)
                 fake_p = probs[:, 1]                    # (N,) — class 1 = fake
-                return float(fake_p.mean().item())
+                return float(fake_p.mean().item()), fake_p.cpu().tolist()
         except Exception as exc:
             logger.warning("[deepfake] %s inference failed: %s", name, exc)
-            return None
+            return None, []
 
     # ------------------------------------------------------------------
     # Public interface  (signature MUST NOT change — called by tasks.py)
@@ -121,6 +126,7 @@ class DeepfakeDetector:
         self,
         video_path: str,
         max_frames: int = 20,
+        generate_heatmap: bool = False,
     ) -> DeepfakeResult:
         """
         Run ensemble deepfake detection on *video_path*.
@@ -153,8 +159,8 @@ class DeepfakeDetector:
         en_batch = preprocess_batch(frames, _EFFICIENTNET_SIZE,  self.device)
 
         # ── 3. Inference ────────────────────────────────────────────────
-        x_score  = self._infer(self.xception,    x_batch,  "xception")
-        en_score = self._infer(self.efficientnet, en_batch, "efficientnet")
+        x_score,  x_frame_scores  = self._infer(self.xception,    x_batch,  "xception")
+        en_score, en_frame_scores = self._infer(self.efficientnet, en_batch, "efficientnet")
 
         if x_score is None and en_score is None:
             raise RuntimeError(
@@ -180,6 +186,39 @@ class DeepfakeDetector:
         is_deepfake = confidence >= self.threshold
         elapsed_ms  = (time.monotonic() - t0) * 1000
 
+        # ── 5. Optional Grad-CAM heatmap ─────────────────────────────────
+        heatmap_frame: Optional[str] = None
+        heatmap_frame_index: Optional[int] = None
+
+        if generate_heatmap and frames:
+            try:
+                import cv2
+                from backend.ml.gradcam import generate_ensemble_heatmap
+
+                # Build per-frame ensemble scores to find the most suspicious frame
+                per_frame: List[float] = []
+                for i in range(len(frames)):
+                    xs = x_frame_scores[i]  if i < len(x_frame_scores)  else None
+                    es = en_frame_scores[i] if i < len(en_frame_scores) else None
+                    if xs is not None and es is not None:
+                        per_frame.append(xs * self.xception_w + es * self.efficientnet_w)
+                    elif xs is not None:
+                        per_frame.append(xs)
+                    elif es is not None:
+                        per_frame.append(es)
+                    else:
+                        per_frame.append(0.0)
+
+                idx = int(np.argmax(per_frame)) if per_frame else 0
+                annotated = generate_ensemble_heatmap(
+                    frames[idx], self.xception, self.efficientnet, self.device
+                )
+                _, buf = cv2.imencode(".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, 85])
+                heatmap_frame       = base64.b64encode(buf).decode("utf-8")
+                heatmap_frame_index = idx
+            except Exception as exc:
+                logger.warning("[deepfake] Heatmap generation failed: %s", exc)
+
         return DeepfakeResult(
             is_deepfake=is_deepfake,
             confidence=round(confidence, 4),
@@ -194,6 +233,8 @@ class DeepfakeDetector:
             },
             anomalies=anomalies,
             processing_time_ms=round(elapsed_ms, 1),
+            heatmap_frame=heatmap_frame,
+            heatmap_frame_index=heatmap_frame_index,
         )
 
     # keep the old method name alive in case anything else calls it

@@ -43,7 +43,8 @@ class ModelLoader:
                 if "xception" not in cls._models:
                     logger.info("Loading XceptionNet with ImageNet pretrained weights…")
                     # num_classes=2 replaces the head automatically; backbone stays pretrained
-                    model = timm.create_model("xception", pretrained=True, num_classes=2)
+                    # "legacy_xception" is the explicit timm 1.x name — avoids deprecation warning
+                    model = timm.create_model("legacy_xception", pretrained=True, num_classes=2)
                     model.eval()
                     model = model.to(cls.get_device())
                     cls._models["xception"] = model

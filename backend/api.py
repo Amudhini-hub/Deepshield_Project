@@ -12,17 +12,10 @@ from typing import Optional
 
 from celery.result import AsyncResult
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
-try:
-    import cv2
-    import numpy as np
-
-    CV2_AVAILABLE = True
-except ImportError:
-    CV2_AVAILABLE = False
 
 import backend.crud as crud
 from backend.config.config import get_config
@@ -52,9 +45,6 @@ from backend.services.authentication import (
 )
 from backend.services.behavioral_biometrics import BehavioralBiometricsEngine
 from backend.services.risk_assessment import RiskAssessmentEngine
-
-# ML inference runs inside Celery workers — no module-level singleton needed here.
-ML_AVAILABLE = True
 
 # Celery tasks
 from backend.celery_app import celery_app
@@ -532,7 +522,10 @@ async def analyze_behavior(
     status_code=status.HTTP_200_OK,
     summary="Assess authentication risk",
 )
-async def assess_risk(payload: RiskAssessmentRequest) -> RiskAssessmentResponse:
+async def assess_risk(
+    payload: RiskAssessmentRequest,
+    current_user: User = Depends(get_current_user),
+) -> RiskAssessmentResponse:
     """Assess risk based on biometric and behavioral analysis."""
     try:
         result = risk_engine.assess_authentication_risk(
@@ -598,46 +591,6 @@ def _validate_video_upload(file: UploadFile, video_data: bytes) -> None:
         )
 
 
-def _extract_frames(video_path: str, max_frames: int) -> list:
-    """Extract raw frames from a video file, skip near-black frames."""
-    face_cascade = cv2.CascadeClassifier(
-        cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-    )
-    cap = cv2.VideoCapture(video_path)
-    frames = []
-    face_found = False
-
-    try:
-        total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) or max_frames
-        step = max(1, total // max_frames)
-        pos = 0
-
-        while len(frames) < max_frames:
-            cap.set(cv2.CAP_PROP_POS_FRAMES, pos)
-            ret, frame = cap.read()
-            if not ret:
-                break
-
-            # Skip near-black / corrupted frames
-            if np.mean(frame) < 5:
-                pos += step
-                continue
-
-            frames.append(frame)
-
-            # Check for face presence (sample first 10 extracted frames)
-            if not face_found and len(frames) <= 10:
-                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                faces = face_cascade.detectMultiScale(gray, 1.1, 5, minSize=(30, 30))
-                if len(faces) > 0:
-                    face_found = True
-
-            pos += step
-    finally:
-        cap.release()
-
-    return frames, face_found
-
 
 @api_router.post(
     "/deepfake/detect",
@@ -648,13 +601,21 @@ async def detect_deepfake(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
+    heatmap: bool = Query(default=True, description="Generate Grad-CAM heatmap overlay"),
 ) -> dict:
     """Queue deepfake detection for an uploaded video. Poll GET /tasks/{task_id} for results."""
     video_data = await file.read()
     _validate_video_upload(file, video_data)
 
     video_b64 = base64.b64encode(video_data).decode("ascii")
-    task = detect_deepfake_task.delay(video_b64, current_user.id)
+    try:
+        task = detect_deepfake_task.delay(video_b64, current_user.id, heatmap)
+    except Exception as exc:
+        logger.error(f"Failed to queue deepfake task: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Detection queue unavailable — please try again later",
+        )
 
     # Register task ID in Redis so the polling endpoint can return 404 for unknown IDs.
     try:
@@ -690,7 +651,14 @@ async def detect_liveness(
     _validate_video_upload(file, video_data)
 
     video_b64 = base64.b64encode(video_data).decode("ascii")
-    task = detect_liveness_task.delay(video_b64, current_user.id)
+    try:
+        task = detect_liveness_task.delay(video_b64, current_user.id)
+    except Exception as exc:
+        logger.error(f"Failed to queue liveness task: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Detection queue unavailable — please try again later",
+        )
 
     try:
         from backend.redis_manager import get_redis_manager
@@ -782,7 +750,7 @@ async def health() -> dict:
         "service": "deepshield",
         "version": config.APP_VERSION,
         "timestamp": datetime.utcnow().isoformat(),
-        "ml_services": "available" if ML_AVAILABLE else "unavailable",
+        "ml_services": "available",
     }
 
 
@@ -806,7 +774,7 @@ async def detailed_health_status() -> dict:
             "api": {"status": "healthy"},
             "database": {"status": "healthy" if health_check() else "unhealthy"},
             "redis": redis_stats,
-            "ml_services": "available" if ML_AVAILABLE else "unavailable",
+            "ml_services": "available",
         },
         "environment": config.ENVIRONMENT,
         "debug_mode": config.DEBUG,

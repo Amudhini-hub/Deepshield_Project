@@ -26,8 +26,8 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer(), nullable=False),
         sa.Column("email", sa.String(length=255), nullable=False),
         sa.Column("hashed_password", sa.String(length=512), nullable=False),
-        sa.Column("is_active", sa.Boolean(), nullable=True),
-        sa.Column("created_at", sa.DateTime(), nullable=True),
+        sa.Column("is_active", sa.Boolean(), nullable=False),
+        sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index("ix_users_email", "users", ["email"], unique=True)
@@ -38,7 +38,7 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer(), nullable=False),
         sa.Column("user_id", sa.String(length=128), nullable=False),
         sa.Column("profile_data", sa.JSON(), nullable=False),
-        sa.Column("created_at", sa.DateTime(), nullable=True),
+        sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index("ix_biometric_profiles_id", "biometric_profiles", ["id"], unique=False)
@@ -50,7 +50,7 @@ def upgrade() -> None:
         sa.Column("user_id", sa.String(length=128), nullable=False),
         sa.Column("event_type", sa.String(length=128), nullable=False),
         sa.Column("payload", sa.JSON(), nullable=True),
-        sa.Column("created_at", sa.DateTime(), nullable=True),
+        sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index("ix_audit_logs_id", "audit_logs", ["id"], unique=False)

@@ -9,6 +9,8 @@ export interface DeepfakeResponse {
   details: Record<string, unknown>;
   anomalies: string[];
   timestamp: string;
+  heatmap_frame: string | null;        // base64 JPEG of the Grad-CAM overlay
+  heatmap_frame_index: number | null;  // index of the most suspicious frame
 }
 
 export interface LivenessResponse {

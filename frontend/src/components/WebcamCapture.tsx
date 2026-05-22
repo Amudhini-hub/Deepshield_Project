@@ -45,11 +45,16 @@ export default function WebcamCapture({ onResult }: Props) {
   const faaRef = useRef<FaceApiModule | null>(null);    // face-api.js module
   const loopRef = useRef<number>(0);
   const runLoopRef = useRef(false);                     // ref so the async loop can see it
+  const cancelRefs = useRef<{ deepfake: (() => void) | null; liveness: (() => void) | null }>({
+    deepfake: null,
+    liveness: null,
+  });
 
   const [camStatus, setCamStatus] = useState<CamStatus>("idle");
   const [phase, setPhase] = useState<Phase>("idle");
   const [faceDetected, setFaceDetected] = useState(false);
   const [modelsLoaded, setModelsLoaded] = useState(false);
+  const [faaLoadFailed, setFaaLoadFailed] = useState(false);
   const [countdown, setCountdown] = useState(0);
   const [errorMsg, setErrorMsg] = useState("");
 
@@ -68,16 +73,19 @@ export default function WebcamCapture({ onResult }: Props) {
       })
       .catch((err) => {
         console.warn("face-api.js load failed:", err);
+        if (!cancelled) setFaaLoadFailed(true);
       });
     return () => { cancelled = true; };
   }, []);
 
-  // ── Cleanup camera on unmount ────────────────────────────────────────
+  // ── Cleanup camera and in-flight polls on unmount ───────────────────
   useEffect(() => {
     return () => {
       runLoopRef.current = false;
       cancelAnimationFrame(loopRef.current);
       streamRef.current?.getTracks().forEach((t) => t.stop());
+      cancelRefs.current.deepfake?.();
+      cancelRefs.current.liveness?.();
     };
   }, []);
 
@@ -192,14 +200,20 @@ export default function WebcamCapture({ onResult }: Props) {
       setPhase("analysing");
 
       const token = getToken() ?? "";
+
+      const dfTask = detectDeepfake(blob, token);
+      const lvTask = detectLiveness(blob, token);
+      cancelRefs.current.deepfake = dfTask.cancel;
+      cancelRefs.current.liveness = lvTask.cancel;
+
       try {
-        const [deepfake, liveness] = await Promise.all([
-          detectDeepfake(blob, token),
-          detectLiveness(blob, token),
-        ]);
+        const [deepfake, liveness] = await Promise.all([dfTask.promise, lvTask.promise]);
         onResult({ deepfake, liveness, capturedAt: new Date().toISOString() });
         setPhase("done");
       } catch (err: unknown) {
+        const msg = (err as Error)?.message ?? "";
+        if (msg === "Cancelled") return; // component unmounted — drop silently
+
         const status = (err as { response?: { status?: number } })?.response?.status;
         const detail =
           (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
@@ -207,11 +221,14 @@ export default function WebcamCapture({ onResult }: Props) {
         if (status === 401) {
           setErrorMsg("Session expired. Please log in again.");
         } else if (status === 503) {
-          setErrorMsg("ML service unavailable — backend models not loaded.");
+          setErrorMsg("Detection service unavailable — please try again later.");
         } else {
           setErrorMsg(detail ?? "Analysis failed. Please try again.");
         }
         setPhase("error");
+      } finally {
+        cancelRefs.current.deepfake = null;
+        cancelRefs.current.liveness = null;
       }
     };
 
@@ -235,11 +252,12 @@ export default function WebcamCapture({ onResult }: Props) {
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────
+  // If face-api.js failed to load we skip the face-detection gate entirely
+  // so the user can still capture — the backend does its own face detection.
   const canCapture =
     camStatus === "active" &&
     (phase === "ready" || phase === "done" || phase === "error") &&
-    faceDetected &&
-    modelsLoaded;
+    (faaLoadFailed || (modelsLoaded && faceDetected));
 
   // ── Render ────────────────────────────────────────────────────────────
   return (
@@ -372,7 +390,7 @@ export default function WebcamCapture({ onResult }: Props) {
                 padding: "0 1rem",
               }}
             >
-              {["Deepfake detection", "Liveness check", "Risk scoring"].map((s) => (
+              {["Deepfake detection", "Liveness check", "Frame analysis"].map((s) => (
                 <span
                   key={s}
                   style={{

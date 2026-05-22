@@ -3,23 +3,23 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Shield, Mail, Lock, AlertCircle, Loader2, Eye, EyeOff } from "lucide-react";
+import { Shield, Mail, Lock, AlertCircle, Loader2, Eye, EyeOff, ShieldCheck } from "lucide-react";
 import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
 import { login } from "@/lib/api";
 import { setToken, isAuthenticated } from "@/lib/auth";
 
 const C = {
-  primary: "#4f46e5",
-  primaryDark: "#4338ca",
-  primaryLight: "#eef2ff",
-  borderAccent: "#c7d2fe",
-  heading: "#1e1b4b",
-  body: "#6b7280",
-  muted: "#9ca3af",
-  pageBg: "#f8faff",
+  blue: "#003580",
+  blueLight: "#004aad",
+  gold: "#C8922A",
+  goldLight: "#FDF3E1",
+  bg: "#f0f4f8",
   card: "#ffffff",
-  border: "#e0e7ff",
+  heading: "#1a2332",
+  body: "#4a5568",
+  muted: "#718096",
+  border: "#d1dce8",
   danger: "#dc2626",
   dangerBg: "#fee2e2",
 };
@@ -50,7 +50,7 @@ function InputField({
     <div>
       <label
         htmlFor={id}
-        style={{ display: "block", fontSize: 13, fontWeight: 500, color: C.heading, marginBottom: 6 }}
+        style={{ display: "block", fontSize: 12, fontWeight: 600, color: C.heading, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.5 }}
       >
         {label}
       </label>
@@ -61,7 +61,7 @@ function InputField({
             left: 12,
             top: "50%",
             transform: "translateY(-50%)",
-            color: focused ? C.primary : C.muted,
+            color: focused ? C.blue : C.muted,
             pointerEvents: "none",
             display: "flex",
           }}
@@ -80,15 +80,15 @@ function InputField({
           required
           style={{
             width: "100%",
-            padding: "0.65rem 2.5rem 0.65rem 2.25rem",
-            border: `1px solid ${focused ? C.primary : C.border}`,
+            padding: "0.7rem 2.5rem 0.7rem 2.35rem",
+            border: `1.5px solid ${focused ? C.blue : C.border}`,
             borderRadius: 8,
             fontSize: 14,
             color: C.heading,
-            background: C.pageBg,
+            background: focused ? "#fff" : C.bg,
             outline: "none",
             boxSizing: "border-box",
-            transition: "border-color 0.15s",
+            transition: "border-color 0.15s, background 0.15s",
           }}
         />
         {rightSlot && (
@@ -124,7 +124,7 @@ export default function LoginPage() {
     } catch (err: unknown) {
       const detail =
         (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(detail ?? "Invalid email or password. Please try again.");
+      setError(detail ?? "Invalid credentials. Please verify your Customer ID and password.");
     } finally {
       setLoading(false);
     }
@@ -142,7 +142,7 @@ export default function LoginPage() {
   );
 
   return (
-    <div style={{ background: C.pageBg, minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+    <div style={{ background: C.bg, minHeight: "100vh", display: "flex", flexDirection: "column" }}>
       <Nav />
 
       <div
@@ -154,41 +154,57 @@ export default function LoginPage() {
           padding: "3rem 1rem",
         }}
       >
-        <div style={{ width: "100%", maxWidth: 400 }}>
+        <div style={{ width: "100%", maxWidth: 420 }}>
 
-          {/* Logo + heading */}
-          <div style={{ textAlign: "center", marginBottom: "2rem" }}>
+          {/* IOB branding header */}
+          <div
+            style={{
+              background: C.blue,
+              borderRadius: "12px 12px 0 0",
+              padding: "1.5rem",
+              textAlign: "center",
+              borderBottom: `3px solid ${C.gold}`,
+            }}
+          >
             <div
               style={{
-                width: 48,
-                height: 48,
-                background: C.primary,
-                borderRadius: 14,
+                width: 50,
+                height: 50,
+                background: C.gold,
+                borderRadius: 12,
                 display: "inline-flex",
                 alignItems: "center",
                 justifyContent: "center",
-                marginBottom: "1rem",
+                marginBottom: "0.875rem",
               }}
             >
               <Shield size={24} color="#fff" />
             </div>
-            <h1 style={{ fontSize: 24, fontWeight: 700, color: C.heading, margin: "0 0 6px" }}>
-              Welcome back
-            </h1>
-            <p style={{ fontSize: 14, color: C.body, margin: 0 }}>
-              Sign in to your DeepShield account
-            </p>
+            <div style={{ fontSize: 14, fontWeight: 700, color: C.gold, marginBottom: 3 }}>
+              Indian Overseas Bank
+            </div>
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.7)" }}>
+              Secure Authentication Portal
+            </div>
           </div>
 
           {/* Card */}
           <div
             style={{
               background: C.card,
-              border: `0.5px solid ${C.border}`,
-              borderRadius: 16,
+              border: `1px solid ${C.border}`,
+              borderTop: "none",
+              borderRadius: "0 0 12px 12px",
               padding: "2rem",
             }}
           >
+            <div style={{ fontSize: 16, fontWeight: 700, color: C.heading, marginBottom: 4 }}>
+              Customer Login
+            </div>
+            <div style={{ fontSize: 13, color: C.muted, marginBottom: "1.5rem" }}>
+              Enter your registered credentials to proceed.
+            </div>
+
             {/* Error banner */}
             {error && (
               <div
@@ -209,23 +225,20 @@ export default function LoginPage() {
               </div>
             )}
 
-            <form
-              onSubmit={handleSubmit}
-              style={{ display: "flex", flexDirection: "column", gap: "1rem" }}
-            >
+            <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
               <InputField
-                label="Email address"
+                label="Customer ID / Email"
                 id="email"
                 type="email"
                 value={email}
                 onChange={setEmail}
-                placeholder="you@example.com"
+                placeholder="registered@email.com"
                 icon={Mail}
                 autoComplete="email"
               />
 
               <InputField
-                label="Password"
+                label="Password / MPIN"
                 id="password"
                 type={showPw ? "text" : "password"}
                 value={password}
@@ -241,13 +254,13 @@ export default function LoginPage() {
                 disabled={loading}
                 style={{
                   width: "100%",
-                  background: loading ? C.borderAccent : C.primary,
+                  background: loading ? "#e5c98a" : C.gold,
                   color: "#fff",
                   border: "none",
-                  padding: "0.75rem",
+                  padding: "0.8rem",
                   borderRadius: 8,
                   fontSize: 14,
-                  fontWeight: 600,
+                  fontWeight: 700,
                   cursor: loading ? "not-allowed" : "pointer",
                   display: "flex",
                   alignItems: "center",
@@ -256,17 +269,41 @@ export default function LoginPage() {
                   transition: "background 0.15s",
                   marginTop: 4,
                 }}
-                onMouseOver={(e) => {
-                  if (!loading) e.currentTarget.style.background = C.primaryDark;
-                }}
-                onMouseOut={(e) => {
-                  if (!loading) e.currentTarget.style.background = C.primary;
-                }}
+                onMouseOver={(e) => { if (!loading) e.currentTarget.style.background = "#b07e24"; }}
+                onMouseOut={(e) => { if (!loading) e.currentTarget.style.background = C.gold; }}
               >
                 {loading && <Loader2 size={15} className="animate-spin" />}
-                {loading ? "Signing in…" : "Sign in →"}
+                {loading ? "Authenticating…" : "Secure Login →"}
               </button>
             </form>
+
+            {/* Security indicators */}
+            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", justifyContent: "center", marginTop: "1.5rem", paddingTop: "1.25rem", borderTop: `1px solid ${C.border}` }}>
+              {[
+                { icon: ShieldCheck, label: "256-bit SSL" },
+                { icon: Lock, label: "End-to-End Encrypted" },
+                { icon: Shield, label: "AI Fraud Detection" },
+              ].map(({ icon: Icon, label }) => (
+                <div
+                  key={label}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                    fontSize: 10,
+                    fontWeight: 600,
+                    color: C.blue,
+                    background: "#e8f0fe",
+                    border: `1px solid #c0d0ea`,
+                    borderRadius: 20,
+                    padding: "3px 9px",
+                  }}
+                >
+                  <Icon size={10} />
+                  {label}
+                </div>
+              ))}
+            </div>
           </div>
 
           {/* Footer link */}
@@ -274,12 +311,16 @@ export default function LoginPage() {
             Don&apos;t have an account?{" "}
             <Link
               href="/register"
-              style={{ color: C.primary, fontWeight: 500, textDecoration: "none" }}
-              onMouseOver={(e) => (e.currentTarget.style.textDecoration = "underline")}
-              onMouseOut={(e) => (e.currentTarget.style.textDecoration = "none")}
+              style={{ color: C.blue, fontWeight: 600, textDecoration: "none" }}
+              onMouseOver={(e) => (e.currentTarget.style.color = C.gold)}
+              onMouseOut={(e) => (e.currentTarget.style.color = C.blue)}
             >
-              Create one →
+              Register →
             </Link>
+          </p>
+
+          <p style={{ textAlign: "center", fontSize: 11, color: C.muted, marginTop: "0.75rem" }}>
+            By logging in, you agree to IOB&apos;s Terms of Service and Privacy Policy.
           </p>
         </div>
       </div>

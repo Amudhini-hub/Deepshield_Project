@@ -7,13 +7,13 @@ import { Shield, Menu, X, LogOut, UserCircle } from "lucide-react";
 import { isAuthenticated, clearToken } from "@/lib/auth";
 
 const C = {
-  primary: "#4f46e5",
-  primaryDark: "#4338ca",
-  primaryLight: "#eef2ff",
-  borderAccent: "#c7d2fe",
-  heading: "#1e1b4b",
-  body: "#6b7280",
-  border: "#e0e7ff",
+  blue: "#003580",
+  blueLight: "#004aad",
+  gold: "#C8922A",
+  goldLight: "#FDF3E1",
+  white: "#ffffff",
+  whiteAlpha: "rgba(255,255,255,0.75)",
+  whiteAlpha2: "rgba(255,255,255,0.15)",
 };
 
 const NAV_LINKS = [
@@ -29,10 +29,9 @@ export default function Nav() {
   const [open, setOpen] = useState(false);
   const [authed, setAuthed] = useState(false);
 
-  // Read localStorage only on the client to avoid SSR mismatch
   useEffect(() => {
     setAuthed(isAuthenticated());
-  }, [pathname]); // re-check when route changes (after login/logout)
+  }, [pathname]);
 
   function handleLogout() {
     clearToken();
@@ -44,58 +43,76 @@ export default function Nav() {
   return (
     <nav
       className="sticky top-0 z-50"
-      style={{ background: "#fff", borderBottom: "0.5px solid #e0e7ff" }}
+      style={{
+        background: C.blue,
+        borderBottom: `3px solid ${C.gold}`,
+        boxShadow: "0 2px 12px rgba(0,0,0,0.18)",
+      }}
     >
-      <div className="flex justify-between items-center px-6 md:px-12 py-4">
+      <div className="flex justify-between items-center px-6 md:px-12 py-3">
         {/* Logo */}
         <Link
           href="/"
-          className="flex items-center gap-2.5 text-lg font-semibold no-underline"
-          style={{ color: C.heading }}
+          className="flex items-center gap-3 no-underline"
+          style={{ color: C.white }}
         >
           <div
-            className="w-[34px] h-[34px] rounded-lg flex items-center justify-center text-white flex-shrink-0"
-            style={{ background: C.primary }}
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 8,
+              background: C.gold,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+            }}
           >
-            <Shield size={17} />
+            <Shield size={18} color="#fff" />
           </div>
-          DeepShield
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: C.gold, lineHeight: 1.1 }}>
+              Indian Overseas Bank
+            </div>
+            <div style={{ fontSize: 10, color: C.whiteAlpha, letterSpacing: 0.5 }}>
+              DeepShield · Secure Authentication
+            </div>
+          </div>
         </Link>
 
         {/* Desktop links */}
-        <div className="hidden md:flex gap-8 items-center">
+        <div className="hidden md:flex gap-7 items-center">
           {NAV_LINKS.map(({ href, label }) => (
             <Link
               key={href}
               href={href}
-              className="text-sm transition-colors"
-              style={{ color: C.body }}
-              onMouseOver={(e) => (e.currentTarget.style.color = C.primary)}
-              onMouseOut={(e) => (e.currentTarget.style.color = C.body)}
+              className="text-sm transition-colors no-underline"
+              style={{ color: C.whiteAlpha, fontWeight: 500 }}
+              onMouseOver={(e) => (e.currentTarget.style.color = C.gold)}
+              onMouseOut={(e) => (e.currentTarget.style.color = C.whiteAlpha)}
             >
               {label}
             </Link>
           ))}
 
           {authed ? (
-            /* Authenticated: avatar chip + logout */
-            <div style={{ display: "flex", alignItems: "center", gap: "0.625rem" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
               <div
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: 6,
-                  background: C.primaryLight,
-                  border: `1px solid ${C.borderAccent}`,
+                  gap: 5,
+                  background: C.whiteAlpha2,
+                  border: `1px solid ${C.gold}`,
                   borderRadius: 20,
-                  padding: "3px 10px 3px 6px",
+                  padding: "3px 10px 3px 7px",
                   fontSize: 12,
-                  color: C.primary,
-                  fontWeight: 500,
+                  color: C.gold,
+                  fontWeight: 600,
                 }}
               >
-                <UserCircle size={14} />
-                Signed in
+                <UserCircle size={13} />
+                Authenticated
               </div>
               <button
                 onClick={handleLogout}
@@ -105,61 +122,68 @@ export default function Nav() {
                   alignItems: "center",
                   gap: 5,
                   background: "none",
-                  border: `1px solid ${C.border}`,
+                  border: `1px solid rgba(255,255,255,0.3)`,
                   borderRadius: 8,
                   padding: "5px 10px",
-                  fontSize: 13,
-                  color: C.body,
+                  fontSize: 12,
+                  color: C.whiteAlpha,
                   cursor: "pointer",
                 }}
                 onMouseOver={(e) => {
-                  e.currentTarget.style.borderColor = C.primary;
-                  e.currentTarget.style.color = C.primary;
+                  e.currentTarget.style.borderColor = C.gold;
+                  e.currentTarget.style.color = C.gold;
                 }}
                 onMouseOut={(e) => {
-                  e.currentTarget.style.borderColor = C.border;
-                  e.currentTarget.style.color = C.body;
+                  e.currentTarget.style.borderColor = "rgba(255,255,255,0.3)";
+                  e.currentTarget.style.color = C.whiteAlpha;
                 }}
               >
-                <LogOut size={13} />
+                <LogOut size={12} />
                 Sign out
               </button>
             </div>
           ) : (
-            /* Not authenticated: Log in + Sign up */
             <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
               <Link href="/login">
                 <button
                   style={{
                     background: "none",
-                    border: `1px solid ${C.border}`,
+                    border: `1px solid rgba(255,255,255,0.3)`,
                     borderRadius: 8,
                     padding: "5px 14px",
                     fontSize: 13,
                     fontWeight: 500,
-                    color: C.body,
+                    color: C.whiteAlpha,
                     cursor: "pointer",
                   }}
                   onMouseOver={(e) => {
-                    e.currentTarget.style.borderColor = C.primary;
-                    e.currentTarget.style.color = C.primary;
+                    e.currentTarget.style.borderColor = C.gold;
+                    e.currentTarget.style.color = C.gold;
                   }}
                   onMouseOut={(e) => {
-                    e.currentTarget.style.borderColor = C.border;
-                    e.currentTarget.style.color = C.body;
+                    e.currentTarget.style.borderColor = "rgba(255,255,255,0.3)";
+                    e.currentTarget.style.color = C.whiteAlpha;
                   }}
                 >
-                  Log in
+                  Customer Login
                 </button>
               </Link>
-              <Link href="/register">
+              <Link href="/demo">
                 <button
-                  className="text-white border-0 px-4 py-2 rounded-lg text-sm cursor-pointer font-medium"
-                  style={{ background: C.primary, minHeight: 34, fontSize: 13 }}
-                  onMouseOver={(e) => (e.currentTarget.style.background = C.primaryDark)}
-                  onMouseOut={(e) => (e.currentTarget.style.background = C.primary)}
+                  style={{
+                    background: C.gold,
+                    color: "#fff",
+                    border: "none",
+                    padding: "6px 16px",
+                    borderRadius: 8,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                  onMouseOver={(e) => (e.currentTarget.style.background = "#b07e24")}
+                  onMouseOut={(e) => (e.currentTarget.style.background = C.gold)}
                 >
-                  Sign up →
+                  Try Demo →
                 </button>
               </Link>
             </div>
@@ -171,7 +195,7 @@ export default function Nav() {
           className="md:hidden"
           onClick={() => setOpen(!open)}
           aria-label="Toggle menu"
-          style={{ background: "none", border: "none", cursor: "pointer", color: C.heading, padding: 4 }}
+          style={{ background: "none", border: "none", cursor: "pointer", color: C.white, padding: 4 }}
         >
           {open ? <X size={22} /> : <Menu size={22} />}
         </button>
@@ -182,12 +206,12 @@ export default function Nav() {
         <div
           className="md:hidden"
           style={{
-            borderTop: "0.5px solid #e0e7ff",
+            borderTop: `1px solid rgba(255,255,255,0.12)`,
             padding: "1rem 1.5rem",
             display: "flex",
             flexDirection: "column",
             gap: "0.875rem",
-            background: "#fff",
+            background: "#002460",
           }}
         >
           {NAV_LINKS.map(({ href, label }) => (
@@ -195,14 +219,13 @@ export default function Nav() {
               key={href}
               href={href}
               onClick={() => setOpen(false)}
-              style={{ fontSize: 15, color: C.heading, textDecoration: "none", fontWeight: 500 }}
+              style={{ fontSize: 15, color: C.white, textDecoration: "none", fontWeight: 500 }}
             >
               {label}
             </Link>
           ))}
 
-          {/* Mobile divider */}
-          <div style={{ height: "0.5px", background: C.border }} />
+          <div style={{ height: "0.5px", background: "rgba(255,255,255,0.15)" }} />
 
           {authed ? (
             <button
@@ -212,12 +235,12 @@ export default function Nav() {
                 alignItems: "center",
                 gap: 7,
                 background: "none",
-                border: `1px solid ${C.border}`,
+                border: `1px solid rgba(255,255,255,0.3)`,
                 borderRadius: 8,
                 padding: "0.625rem 1rem",
                 fontSize: 14,
                 fontWeight: 500,
-                color: C.body,
+                color: C.white,
                 cursor: "pointer",
                 width: "100%",
               }}
@@ -231,23 +254,23 @@ export default function Nav() {
                 <button
                   style={{
                     background: "none",
-                    border: `1px solid ${C.border}`,
+                    border: `1px solid rgba(255,255,255,0.3)`,
                     borderRadius: 8,
                     padding: "0.625rem 1.25rem",
                     fontSize: 14,
                     fontWeight: 500,
-                    color: C.heading,
+                    color: C.white,
                     cursor: "pointer",
                     width: "100%",
                   }}
                 >
-                  Log in
+                  Customer Login
                 </button>
               </Link>
-              <Link href="/register" onClick={() => setOpen(false)}>
+              <Link href="/demo" onClick={() => setOpen(false)}>
                 <button
                   style={{
-                    background: C.primary,
+                    background: C.gold,
                     color: "#fff",
                     border: "none",
                     padding: "0.625rem 1.25rem",
@@ -258,7 +281,7 @@ export default function Nav() {
                     width: "100%",
                   }}
                 >
-                  Sign up →
+                  Try Demo →
                 </button>
               </Link>
             </>

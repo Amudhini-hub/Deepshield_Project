@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import { Loader2, ShieldCheck, CheckCircle2, Clock, Cpu, Shield } from "lucide-react";
 import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
 import WebcamCapture from "@/components/WebcamCapture";
@@ -12,17 +12,19 @@ import { isAuthenticated, setToken } from "@/lib/auth";
 import type { DetectionResult } from "@/types/detection";
 
 const C = {
-  primary: "#4f46e5",
-  primaryDark: "#4338ca",
-  primaryLight: "#eef2ff",
-  borderAccent: "#c7d2fe",
-  heading: "#1e1b4b",
-  body: "#6b7280",
-  muted: "#9ca3af",
-  pageBg: "#f8faff",
+  blue: "#003580",
+  blueLight: "#004aad",
+  blueDark: "#002460",
+  gold: "#C8922A",
+  goldLight: "#FDF3E1",
+  bg: "#f0f4f8",
   card: "#ffffff",
-  border: "#e0e7ff",
+  heading: "#1a2332",
+  body: "#4a5568",
+  muted: "#718096",
+  border: "#d1dce8",
   danger: "#dc2626",
+  success: "#16a34a",
 };
 
 // ── Quick demo: auto-register an ephemeral account ─────────────────────
@@ -51,8 +53,8 @@ function QuickDemoBanner({ onReady }: { onReady: () => void }) {
   return (
     <div
       style={{
-        background: C.primary,
-        borderRadius: 12,
+        background: C.blue,
+        borderRadius: 10,
         padding: "1.25rem 1.5rem",
         display: "flex",
         alignItems: "center",
@@ -60,14 +62,15 @@ function QuickDemoBanner({ onReady }: { onReady: () => void }) {
         gap: "1rem",
         flexWrap: "wrap",
         marginBottom: "1rem",
+        borderLeft: `4px solid ${C.gold}`,
       }}
     >
       <div>
-        <div style={{ fontSize: 15, fontWeight: 700, color: "#fff", marginBottom: 3 }}>
-          🚀 Try instantly — no sign-up needed
+        <div style={{ fontSize: 14, fontWeight: 700, color: "#fff", marginBottom: 3 }}>
+          Instant access — no sign-up required
         </div>
-        <div style={{ fontSize: 13, color: C.borderAccent }}>
-          We&apos;ll create a temporary demo account for you automatically.
+        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)" }}>
+          We&apos;ll create a temporary demo session for you automatically.
         </div>
         {error && (
           <div style={{ fontSize: 12, color: "#fca5a5", marginTop: 6 }}>{error}</div>
@@ -77,15 +80,15 @@ function QuickDemoBanner({ onReady }: { onReady: () => void }) {
         onClick={handleQuickDemo}
         disabled={loading}
         style={{
-          background: "#fff",
-          color: C.primary,
+          background: C.gold,
+          color: "#fff",
           border: "none",
           padding: "0.625rem 1.25rem",
           borderRadius: 8,
-          fontSize: 14,
+          fontSize: 13,
           fontWeight: 700,
           cursor: loading ? "not-allowed" : "pointer",
-          opacity: loading ? 0.7 : 1,
+          opacity: loading ? 0.75 : 1,
           display: "flex",
           alignItems: "center",
           gap: 6,
@@ -94,9 +97,89 @@ function QuickDemoBanner({ onReady }: { onReady: () => void }) {
         }}
       >
         {loading && <Loader2 size={13} className="animate-spin" />}
-        {loading ? "Setting up…" : "Quick demo →"}
+        {loading ? "Setting up…" : "Start Demo →"}
       </button>
     </div>
+  );
+}
+
+// ── Authentication progress steps ─────────────────────────────────────
+function AuthProgressBar({ hasResult }: { hasResult: boolean }) {
+  const steps = [
+    { id: 1, label: "Face Scan", icon: Cpu },
+    { id: 2, label: "Liveness", icon: Eye2 },
+    { id: 3, label: "Analysis", icon: ShieldCheck },
+    { id: 4, label: "Decision", icon: CheckCircle2 },
+  ];
+  const active = hasResult ? 4 : 1;
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 0,
+        background: C.card,
+        border: `1px solid ${C.border}`,
+        borderRadius: 10,
+        padding: "0.875rem 1.25rem",
+        marginBottom: "1.5rem",
+        overflow: "hidden",
+      }}
+    >
+      {steps.map((step, i) => {
+        const done = step.id < active;
+        const curr = step.id === active;
+        const Icon = step.icon;
+        return (
+          <div key={step.id} style={{ display: "flex", alignItems: "center", flex: 1 }}>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, minWidth: 0 }}>
+              <div
+                style={{
+                  width: 30,
+                  height: 30,
+                  borderRadius: "50%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  background: done ? C.success : curr ? C.gold : C.border,
+                  color: done || curr ? "#fff" : C.muted,
+                  flexShrink: 0,
+                  transition: "background 0.3s",
+                }}
+              >
+                {done ? <CheckCircle2 size={14} /> : <Icon size={13} />}
+              </div>
+              <div style={{ fontSize: 10, fontWeight: 600, color: done ? C.success : curr ? C.gold : C.muted, whiteSpace: "nowrap" }}>
+                {step.label}
+              </div>
+            </div>
+            {i < steps.length - 1 && (
+              <div
+                style={{
+                  flex: 1,
+                  height: 2,
+                  background: done ? C.success : C.border,
+                  margin: "0 6px",
+                  marginBottom: 18,
+                  transition: "background 0.3s",
+                }}
+              />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// Eye icon inline (avoids import collision)
+function Eye2({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
   );
 }
 
@@ -114,42 +197,63 @@ export default function DemoPage() {
 
   if (checking) {
     return (
-      <div style={{ background: C.pageBg, minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+      <div style={{ background: C.bg, minHeight: "100vh", display: "flex", flexDirection: "column" }}>
         <Nav />
         <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <Loader2 size={32} color={C.primary} className="animate-spin" />
+          <Loader2 size={32} color={C.blue} className="animate-spin" />
         </div>
       </div>
     );
   }
 
   return (
-    <div style={{ background: C.pageBg, minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+    <div style={{ background: C.bg, minHeight: "100vh", display: "flex", flexDirection: "column" }}>
       <Nav />
 
+      {/* IOB portal header strip */}
       <div
-        className="px-4 md:px-12 py-8 md:py-12"
+        style={{
+          background: C.goldLight,
+          borderBottom: `1px solid #e8d5a8`,
+          padding: "0.625rem 2rem",
+          display: "flex",
+          alignItems: "center",
+          gap: "0.75rem",
+        }}
+      >
+        <Shield size={13} color={C.gold} />
+        <span style={{ fontSize: 12, fontWeight: 600, color: C.blue }}>
+          Indian Overseas Bank &nbsp;·&nbsp; Identity Verification Portal
+        </span>
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: C.muted }}>
+          <Clock size={11} />
+          Secure session
+        </div>
+      </div>
+
+      <div
+        className="px-4 md:px-12 py-8 md:py-10"
         style={{ maxWidth: 980, margin: "0 auto", width: "100%", flex: 1 }}
       >
         {/* ── Header ── */}
-        <div style={{ marginBottom: "2rem" }}>
+        <div style={{ marginBottom: "1.5rem" }}>
           <div
             style={{
-              fontSize: 12,
-              color: C.primary,
-              fontWeight: 600,
-              letterSpacing: 1,
+              fontSize: 11,
+              color: C.gold,
+              fontWeight: 700,
+              letterSpacing: 1.2,
               textTransform: "uppercase",
               marginBottom: 8,
             }}
           >
-            Live detection
+            Customer Authentication
           </div>
-          <h1 style={{ fontSize: 32, fontWeight: 700, color: C.heading, marginBottom: 8 }}>
-            DeepShield Live Demo
+          <h1 style={{ fontSize: 28, fontWeight: 700, color: C.heading, marginBottom: 8 }}>
+            Identity Verification
           </h1>
-          <p style={{ fontSize: 15, color: C.body }}>
-            Allow camera access, face the lens, and click <strong>Capture &amp; Analyse</strong> — DeepShield runs the full detection pipeline in under a second.
+          <p style={{ fontSize: 14, color: C.body }}>
+            Allow camera access, face the lens, and click <strong>Capture &amp; Analyse</strong> — DeepShield completes the full biometric verification in under a second.
           </p>
         </div>
 
@@ -167,7 +271,7 @@ export default function DemoPage() {
               }}
             >
               <div style={{ flex: 1, height: "0.5px", background: C.border }} />
-              <span style={{ fontSize: 12, color: C.muted }}>or</span>
+              <span style={{ fontSize: 12, color: C.muted }}>or sign in with your account</span>
               <div style={{ flex: 1, height: "0.5px", background: C.border }} />
             </div>
 
@@ -177,22 +281,22 @@ export default function DemoPage() {
                 style={{
                   flex: 1,
                   background: C.card,
-                  border: `1px solid ${C.border}`,
+                  border: `1.5px solid ${C.blue}`,
                   borderRadius: 8,
                   padding: "0.625rem",
                   fontSize: 13,
-                  fontWeight: 500,
-                  color: C.heading,
+                  fontWeight: 600,
+                  color: C.blue,
                   cursor: "pointer",
                 }}
               >
-                Sign in
+                Customer Login
               </button>
               <button
                 onClick={() => router.push("/register")}
                 style={{
                   flex: 1,
-                  background: C.primary,
+                  background: C.gold,
                   border: "none",
                   borderRadius: 8,
                   padding: "0.625rem",
@@ -202,7 +306,7 @@ export default function DemoPage() {
                   cursor: "pointer",
                 }}
               >
-                Create account →
+                Create Account →
               </button>
             </div>
           </div>
@@ -210,81 +314,92 @@ export default function DemoPage() {
 
         {/* ── Two-column detection layout ── */}
         {authed && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
-            {/* Left: camera capture */}
-            <div>
-              <div
-                style={{
-                  fontSize: 11,
-                  color: C.muted,
-                  fontWeight: 600,
-                  letterSpacing: 1,
-                  textTransform: "uppercase",
-                  marginBottom: "0.75rem",
-                }}
-              >
-                Camera capture
-              </div>
-              <WebcamCapture onResult={setResult} />
-              <div
-                style={{
-                  marginTop: "0.875rem",
-                  background: C.primaryLight,
-                  border: `1px solid ${C.borderAccent}`,
-                  borderRadius: 8,
-                  padding: "0.625rem 0.875rem",
-                  fontSize: 12,
-                  color: "#4338ca",
-                }}
-              >
-                🔒 Video is processed directly by your DeepShield instance. No footage is retained.
-              </div>
-            </div>
+          <>
+            <AuthProgressBar hasResult={!!result} />
 
-            {/* Right: results */}
-            <div>
-              <div
-                style={{
-                  fontSize: 11,
-                  color: C.muted,
-                  fontWeight: 600,
-                  letterSpacing: 1,
-                  textTransform: "uppercase",
-                  marginBottom: "0.75rem",
-                }}
-              >
-                Analysis results
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
+              {/* Left: camera capture */}
+              <div>
+                <div
+                  style={{
+                    fontSize: 10,
+                    color: C.muted,
+                    fontWeight: 700,
+                    letterSpacing: 1.2,
+                    textTransform: "uppercase",
+                    marginBottom: "0.75rem",
+                  }}
+                >
+                  Biometric Capture
+                </div>
+                <WebcamCapture onResult={setResult} />
+                <div
+                  style={{
+                    marginTop: "0.875rem",
+                    background: "#e8f0fe",
+                    border: `1px solid #c0d0ea`,
+                    borderRadius: 8,
+                    padding: "0.625rem 0.875rem",
+                    fontSize: 12,
+                    color: C.blue,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                  }}
+                >
+                  <ShieldCheck size={13} />
+                  Video is processed by your DeepShield instance. No footage is stored or transmitted.
+                </div>
               </div>
-              <DetectionResultCard result={result} />
+
+              {/* Right: results */}
+              <div>
+                <div
+                  style={{
+                    fontSize: 10,
+                    color: C.muted,
+                    fontWeight: 700,
+                    letterSpacing: 1.2,
+                    textTransform: "uppercase",
+                    marginBottom: "0.75rem",
+                  }}
+                >
+                  Verification Results
+                </div>
+                <DetectionResultCard result={result} />
+                <p className="text-xs text-center mt-2" style={{ color: C.muted }}>
+                  AI heatmap shows per-region manipulation confidence across the detected face area.
+                </p>
+              </div>
             </div>
-          </div>
+          </>
         )}
 
-        {/* ── Info strip (always visible) ── */}
+        {/* ── Info strip ── */}
         <div
-          className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-10"
+          className="grid grid-cols-1 md:grid-cols-3 mt-10"
           style={{
-            background: C.card,
-            border: `0.5px solid ${C.border}`,
-            borderRadius: 14,
+            background: C.blue,
+            borderRadius: 12,
             overflow: "hidden",
+            borderTop: `3px solid ${C.gold}`,
           }}
         >
           {[
-            { num: "< 800ms", label: "End-to-end detection time" },
+            { num: "< 800ms", label: "End-to-end verification time" },
             { num: "99.2%",   label: "Deepfake detection accuracy" },
-            { num: "5 min",   label: "Average integration time" },
-          ].map((s) => (
+            { num: "98.7%",   label: "Liveness verification rate" },
+          ].map((s, i) => (
             <div
               key={s.label}
               style={{
-                padding: "1.25rem",
+                padding: "1.5rem",
                 textAlign: "center",
-                borderRight: `0.5px solid ${C.border}`,
+                borderRight: i < 2 ? `1px solid rgba(255,255,255,0.12)` : "none",
               }}
             >
-              <div style={{ fontSize: 22, fontWeight: 700, color: C.primary }}>{s.num}</div>
-              <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>{s.label}</div>
+              <div style={{ fontSize: 24, fontWeight: 700, color: C.gold }}>{s.num}</div>
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.65)", marginTop: 4 }}>{s.label}</div>
             </div>
           ))}
         </div>

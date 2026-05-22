@@ -3,6 +3,7 @@
 import { ShieldCheck, ShieldX, AlertTriangle, Clock, Cpu, Eye, Activity } from "lucide-react";
 import type { DetectionResult } from "@/types/detection";
 import { fakePct, riskDecision } from "@/types/detection";
+import HeatmapVisualization from "@/components/HeatmapVisualization";
 
 // ── Design tokens ─────────────────────────────────────────────────────
 const C = {
@@ -324,6 +325,28 @@ export default function DetectionResultCard({ result }: { result: DetectionResul
             ))}
           </div>
         )}
+      </div>
+
+      {/* ── Grad-CAM heatmap ── */}
+      <div
+        style={{
+          background: C.card,
+          border: `0.5px solid ${C.border}`,
+          borderRadius: 14,
+          padding: "1.25rem 1.5rem",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: "1rem" }}>
+          <Cpu size={14} color={C.primary} />
+          <span style={{ fontSize: 12, fontWeight: 600, color: C.muted, letterSpacing: 1, textTransform: "uppercase" }}>
+            AI Heatmap Visualization
+          </span>
+        </div>
+        <HeatmapVisualization
+          heatmapBase64={df.heatmap_frame ?? null}
+          isDeepfake={df.is_deepfake}
+          confidence={df.confidence}
+        />
       </div>
 
       {/* ── Liveness card ── */}

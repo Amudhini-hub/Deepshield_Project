@@ -3,24 +3,44 @@ import { Shield } from "lucide-react";
 export default function Footer() {
   return (
     <footer
-      className="px-12 py-6"
-      style={{ background: "#fff", borderTop: "0.5px solid #e0e7ff" }}
+      style={{ background: "#002460", borderTop: "3px solid #C8922A" }}
     >
-      <div className="flex justify-between items-center flex-wrap gap-4 max-w-[1100px] mx-auto">
-        <div className="flex items-center gap-2 text-base font-semibold" style={{ color: "#1e1b4b" }}>
-          <div
-            className="w-[26px] h-[26px] rounded-lg flex items-center justify-center text-white"
-            style={{ background: "#4f46e5" }}
-          >
-            <Shield size={13} />
+      <div
+        className="px-6 md:px-12 py-5"
+        style={{ maxWidth: 1100, margin: "0 auto" }}
+      >
+        <div className="flex justify-between items-center flex-wrap gap-4">
+          <div className="flex items-center gap-2.5">
+            <div
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: 7,
+                background: "#C8922A",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Shield size={14} color="#fff" />
+            </div>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#C8922A", lineHeight: 1.1 }}>
+                Indian Overseas Bank
+              </div>
+              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.5)" }}>
+                DeepShield · Secure Authentication
+              </div>
+            </div>
           </div>
-          DeepShield
-        </div>
-        <div className="text-xs" style={{ color: "#9ca3af" }}>
-          Built by Team Innovate X for IOB Cybernova Hackathon 2026
-        </div>
-        <div className="text-xs" style={{ color: "#9ca3af" }}>
-          FastAPI · TensorFlow · AWS ECS · Redis
+
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", textAlign: "center" }}>
+            Built by Team Innovate X for IOB Cybernova Hackathon 2026
+          </div>
+
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>
+            FastAPI · PyTorch · AWS ECS · Redis
+          </div>
         </div>
       </div>
     </footer>

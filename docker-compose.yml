@@ -6,9 +6,9 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - SECRET_KEY=your-secret-key-here
-      - DATABASE_URL=postgresql://deepshield:changeme@postgres:5432/deepshield
-      - DEBUG=true
+      - SECRET_KEY=${SECRET_KEY}
+      - DATABASE_URL=postgresql://deepshield:${POSTGRES_PASSWORD}@postgres:5432/deepshield
+      - DEBUG=${DEBUG:-false}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_DB=0
@@ -35,7 +35,7 @@ services:
     environment:
       POSTGRES_DB: deepshield
       POSTGRES_USER: deepshield
-      POSTGRES_PASSWORD: changeme
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
@@ -75,12 +75,12 @@ services:
     build: .
     command: celery -A backend.celery_app worker --loglevel=info --concurrency=2
     environment:
-      - DATABASE_URL=postgresql://deepshield:changeme@postgres:5432/deepshield
+      - DATABASE_URL=postgresql://deepshield:${POSTGRES_PASSWORD}@postgres:5432/deepshield
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_DB=0
       - MODEL_WEIGHTS_DIR=/app/ml_models
-      - ENABLE_GPU=false
+      - ENABLE_GPU=${ENABLE_GPU:-false}
     depends_on:
       postgres:
         condition: service_healthy
@@ -107,7 +107,7 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_DB=0
-      - FLOWER_BASIC_AUTH=admin:changeme123
+      - FLOWER_BASIC_AUTH=${FLOWER_BASIC_AUTH}
     depends_on:
       - celery_worker
     restart: unless-stopped
