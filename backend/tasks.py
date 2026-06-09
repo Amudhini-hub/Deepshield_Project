@@ -7,9 +7,26 @@ from datetime import datetime, timezone
 
 from celery.exceptions import SoftTimeLimitExceeded
 
+from celery.signals import worker_ready
 from backend.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
+
+
+@worker_ready.connect
+def prewarm_models(sender, **kwargs):
+    """Load all ML models into memory when the worker starts so the first task is fast."""
+    logger.info("Pre-warming ML models on worker startup…")
+    try:
+        _get_deepfake_detector()
+        logger.info("Deepfake detector ready.")
+    except Exception as exc:
+        logger.warning("Deepfake detector pre-warm failed: %s", exc)
+    try:
+        _get_liveness_detector()
+        logger.info("Liveness detector ready.")
+    except Exception as exc:
+        logger.warning("Liveness detector pre-warm failed: %s", exc)
 
 # Module-level singletons — initialised once per worker process to avoid
 # reloading heavy model weights on every task invocation.
@@ -37,10 +54,9 @@ def _get_liveness_detector():
 
 @celery_app.task(
     bind=True,
-    max_retries=2,
-    default_retry_delay=5,
-    time_limit=120,
-    soft_time_limit=90,
+    max_retries=0,
+    time_limit=300,
+    soft_time_limit=240,
 )
 def detect_deepfake_task(self, video_b64: str, user_id: int,
                          generate_heatmap: bool = True) -> dict:
@@ -57,7 +73,7 @@ def detect_deepfake_task(self, video_b64: str, user_id: int,
         tmp_fd = None  # fd closed by fdopen
 
         result = _get_deepfake_detector().detect_from_video(
-            video_path, max_frames=30, generate_heatmap=generate_heatmap
+            video_path, max_frames=8, generate_heatmap=generate_heatmap
         )
 
         duration_ms = int((time.monotonic() - start) * 1000)
@@ -78,14 +94,12 @@ def detect_deepfake_task(self, video_b64: str, user_id: int,
             "timestamp":           datetime.now(timezone.utc).isoformat(),
         }
 
-    except SoftTimeLimitExceeded as exc:
-        logger.warning(
-            f"[deepfake] task_id={self.request.id} user_id={user_id} soft time limit exceeded"
-        )
-        raise self.retry(exc=exc)
+    except SoftTimeLimitExceeded:
+        logger.warning(f"[deepfake] task_id={self.request.id} user_id={user_id} soft time limit exceeded")
+        raise
     except Exception as exc:
         logger.error(f"[deepfake] task_id={self.request.id} user_id={user_id} failed: {exc}")
-        raise self.retry(exc=exc)
+        raise
     finally:
         if tmp_fd is not None:
             try:
@@ -101,8 +115,7 @@ def detect_deepfake_task(self, video_b64: str, user_id: int,
 
 @celery_app.task(
     bind=True,
-    max_retries=2,
-    default_retry_delay=5,
+    max_retries=0,
     time_limit=120,
     soft_time_limit=90,
 )
@@ -119,7 +132,7 @@ def detect_liveness_task(self, video_b64: str, user_id: int) -> dict:
             f.write(video_bytes)
         tmp_fd = None
 
-        result = _get_liveness_detector().detect_from_video(video_path, max_frames=60)
+        result = _get_liveness_detector().detect_from_video(video_path, max_frames=20)
 
         duration_ms = int((time.monotonic() - start) * 1000)
         logger.info(
@@ -136,14 +149,12 @@ def detect_liveness_task(self, video_b64: str, user_id: int) -> dict:
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
-    except SoftTimeLimitExceeded as exc:
-        logger.warning(
-            f"[liveness] task_id={self.request.id} user_id={user_id} soft time limit exceeded"
-        )
-        raise self.retry(exc=exc)
+    except SoftTimeLimitExceeded:
+        logger.warning(f"[liveness] task_id={self.request.id} user_id={user_id} soft time limit exceeded")
+        raise
     except Exception as exc:
         logger.error(f"[liveness] task_id={self.request.id} user_id={user_id} failed: {exc}")
-        raise self.retry(exc=exc)
+        raise
     finally:
         if tmp_fd is not None:
             try:

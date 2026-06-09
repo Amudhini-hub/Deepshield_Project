@@ -39,8 +39,8 @@ export function fakePct(r: DeepfakeResponse): number {
 
 /** Returns "ALLOW" | "CHALLENGE" | "BLOCK" based on detection results. */
 export function riskDecision(r: DetectionResult): "ALLOW" | "CHALLENGE" | "BLOCK" {
-  const fp = fakePct(r.deepfake);
-  if (r.deepfake.is_deepfake || !r.liveness.is_alive) return "BLOCK";
-  if (fp > 30 || r.liveness.confidence < 0.7) return "CHALLENGE";
+  if (r.deepfake.is_deepfake) return "BLOCK";
+  if (!r.liveness.is_alive) return "CHALLENGE";
+  if (r.liveness.confidence < 0.55) return "CHALLENGE";
   return "ALLOW";
 }

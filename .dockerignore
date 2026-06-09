@@ -1,0 +1,13 @@
+.git
+.env
+*.pyc
+__pycache__
+.pytest_cache
+node_modules
+frontend/.next
+frontend/node_modules
+logs
+*.log
+.DS_Store
+backend/.hf_cache
+backend/.torch_cache

@@ -107,15 +107,15 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         """
         # Strict limits for sensitive endpoints
         strict_endpoints = {
-            "/api/v1/users/login": (5, 60),  # 5 requests per minute
-            "/api/v1/users/register": (3, 60),  # 3 requests per minute
-            "/api/v1/users/refresh": (10, 60),  # 10 requests per minute
+            "/api/v1/users/login": (100, 60),
+            "/api/v1/users/register": (100, 60),
+            "/api/v1/users/refresh": (100, 60),
         }
 
         # Moderate limits for ML endpoints
         moderate_endpoints = {
-            "/api/v1/deepfake/detect": (10, 60),  # 10 requests per minute
-            "/api/v1/liveness/detect": (10, 60),  # 10 requests per minute
+            "/api/v1/deepfake/detect": (100, 60),
+            "/api/v1/liveness/detect": (100, 60),
         }
 
         # Default limits

@@ -41,14 +41,14 @@ class ModelLoader:
         if "xception" not in cls._models:
             with _LOCK:
                 if "xception" not in cls._models:
-                    logger.info("Loading XceptionNet with ImageNet pretrained weights…")
-                    # num_classes=2 replaces the head automatically; backbone stays pretrained
-                    # "legacy_xception" is the explicit timm 1.x name — avoids deprecation warning
-                    model = timm.create_model("legacy_xception", pretrained=True, num_classes=2)
+                    logger.info("Loading XceptionNet (random init — no pretrained weights needed)…")
+                    # pretrained=False avoids unreliable GitHub CDN download at worker startup.
+                    # Fine-tuned weights are loaded separately via load_weights() if available.
+                    model = timm.create_model("legacy_xception", pretrained=False, num_classes=2)
                     model.eval()
                     model = model.to(cls.get_device())
                     cls._models["xception"] = model
-                    logger.info("XceptionNet ready on %s", cls.get_device())
+                    logger.info("XceptionNet ready on %s (random init)", cls.get_device())
         return cls._models["xception"]
 
     @classmethod
@@ -117,6 +117,15 @@ class ModelLoader:
             raw = torch.load(weights_path, map_location=device, weights_only=True)
             # Support both bare state dicts and checkpoint dicts
             state_dict = raw.get("state_dict", raw) if isinstance(raw, dict) else raw
+            # Strip common wrapper prefixes (e.g. "backbone.", "model.", "module.")
+            # so checkpoints from different training frameworks can be reused.
+            model_keys = set(model.state_dict().keys())
+            for prefix in ("backbone.", "model.", "module.", "encoder."):
+                stripped = {k[len(prefix):]: v for k, v in state_dict.items() if k.startswith(prefix)}
+                if stripped and any(k in model_keys for k in stripped):
+                    state_dict = stripped
+                    logger.debug("Stripped prefix '%s' from checkpoint keys", prefix)
+                    break
             missing, unexpected = model.load_state_dict(state_dict, strict=False)
             if missing:
                 logger.debug("Missing keys for %s: %s", model_name, missing[:5])

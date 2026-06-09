@@ -93,6 +93,16 @@ class DeepfakeDetector:
             os.path.join(self.weights_dir, self.efficientnet_wfile),
         )
 
+        # HuggingFace fine-tuned model — highest weight in ensemble (actually trained on deepfakes)
+        self._hf_available = False
+        try:
+            from backend.ml.hf_detector import get_pipeline
+            get_pipeline()
+            self._hf_available = True
+            logger.info("[deepfake] HuggingFace model pre-loaded successfully")
+        except Exception as exc:
+            logger.warning("[deepfake] HuggingFace model unavailable, using timm-only ensemble: %s", exc)
+
     # ------------------------------------------------------------------
     # Inference helpers
     # ------------------------------------------------------------------
@@ -162,13 +172,32 @@ class DeepfakeDetector:
         x_score,  x_frame_scores  = self._infer(self.xception,    x_batch,  "xception")
         en_score, en_frame_scores = self._infer(self.efficientnet, en_batch, "efficientnet")
 
-        if x_score is None and en_score is None:
-            raise RuntimeError(
-                "Both deepfake models failed — cannot produce a result"
-            )
+        # HuggingFace fine-tuned model (highest weight — actually trained on deepfakes)
+        hf_score: Optional[float] = None
+        hf_frame_scores: List[float] = []
+        if self._hf_available:
+            try:
+                from backend.ml.hf_detector import infer_frames
+                hf_score, hf_frame_scores = infer_frames(frames)
+            except Exception as exc:
+                logger.warning("[deepfake] HF inference failed at task time: %s", exc)
+
+        if hf_score is None and x_score is None and en_score is None:
+            raise RuntimeError("All deepfake models failed — cannot produce a result")
 
         # ── 4. Ensemble ──────────────────────────────────────────────────
-        if x_score is not None and en_score is not None:
+        if hf_score is not None:
+            # HF model available: 60% HF (fine-tuned) + 30% EfficientNet + 10% XceptionNet
+            ensemble = hf_score * 0.6
+            ensemble += (en_score if en_score is not None else hf_score) * 0.3
+            ensemble += (x_score  if x_score  is not None else hf_score) * 0.1
+            anomalies_note = f"hf_score={hf_score:.3f}"
+            if en_score is not None:
+                anomalies_note += f" efficientnet={en_score:.3f}"
+            if x_score is not None:
+                anomalies_note += f" xception={x_score:.3f}"
+            logger.info("[deepfake] HF-led ensemble: %s → %.3f", anomalies_note, ensemble)
+        elif x_score is not None and en_score is not None:
             ensemble = x_score * self.xception_w + en_score * self.efficientnet_w
             if abs(x_score - en_score) > _DISAGREEMENT_THRESHOLD:
                 anomalies.append(
@@ -198,9 +227,15 @@ class DeepfakeDetector:
                 # Build per-frame ensemble scores to find the most suspicious frame
                 per_frame: List[float] = []
                 for i in range(len(frames)):
-                    xs = x_frame_scores[i]  if i < len(x_frame_scores)  else None
-                    es = en_frame_scores[i] if i < len(en_frame_scores) else None
-                    if xs is not None and es is not None:
+                    xs  = x_frame_scores[i]  if i < len(x_frame_scores)  else None
+                    es  = en_frame_scores[i] if i < len(en_frame_scores) else None
+                    hfs = hf_frame_scores[i] if i < len(hf_frame_scores) else None
+                    if hfs is not None:
+                        score = hfs * 0.6
+                        score += (es  if es  is not None else hfs) * 0.3
+                        score += (xs  if xs  is not None else hfs) * 0.1
+                        per_frame.append(score)
+                    elif xs is not None and es is not None:
                         per_frame.append(xs * self.xception_w + es * self.efficientnet_w)
                     elif xs is not None:
                         per_frame.append(xs)

@@ -13,6 +13,7 @@ services:
       - REDIS_PORT=6379
       - REDIS_DB=0
       - REDIS_ENABLED=true
+      - DEEPFAKE_DETECTION_THRESHOLD=0.70
     volumes:
       - ./logs:/app/logs
       - ./metrics:/app/metrics
@@ -81,6 +82,9 @@ services:
       - REDIS_DB=0
       - MODEL_WEIGHTS_DIR=/app/ml_models
       - ENABLE_GPU=${ENABLE_GPU:-false}
+      - DEEPFAKE_DETECTION_THRESHOLD=0.70
+      - TORCH_HOME=/app/backend/.torch_cache
+      - HF_HOME=/app/backend/.hf_cache
     depends_on:
       postgres:
         condition: service_healthy
@@ -88,6 +92,7 @@ services:
         condition: service_healthy
     volumes:
       - ./ml_models:/app/ml_models
+      - ./backend:/app/backend
     restart: unless-stopped
     # ── GPU support (uncomment the block below to enable) ──────────────
     # deploy:

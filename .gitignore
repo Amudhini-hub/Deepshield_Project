@@ -100,3 +100,13 @@ frontend/node_modules/
 
 # IDE
 .code-workspace
+
+# Runtime metrics (auto-generated, not source)
+metrics/
+
+# HuggingFace / PyTorch model cache
+backend/.hf_cache/
+backend/.torch_cache/
+
+# Temp Office files
+~$*
