@@ -32,15 +32,20 @@ export interface DetectionResult {
 
 // Derived helpers used across display components
 
-/** Returns the fake-probability percentage (0–100). */
+/** Returns the fake-probability percentage (0–100). confidence from backend IS always the fake score. */
 export function fakePct(r: DeepfakeResponse): number {
-  return (r.is_deepfake ? r.confidence : 1 - r.confidence) * 100;
+  return r.confidence * 100;
+}
+
+/** Returns authenticity score (0–100): 100 = definitely real, 0 = definitely fake. */
+export function authenticityPct(r: DeepfakeResponse): number {
+  return (1 - r.confidence) * 100;
 }
 
 /** Returns "ALLOW" | "CHALLENGE" | "BLOCK" based on detection results. */
 export function riskDecision(r: DetectionResult): "ALLOW" | "CHALLENGE" | "BLOCK" {
   if (r.deepfake.is_deepfake) return "BLOCK";
   if (!r.liveness.is_alive) return "CHALLENGE";
-  if (r.liveness.confidence < 0.55) return "CHALLENGE";
+  if (r.liveness.confidence < 0.25) return "CHALLENGE";
   return "ALLOW";
 }

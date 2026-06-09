@@ -42,6 +42,10 @@ def extract_frames(
     """
     Sample up to *max_frames* BGR frames evenly from *video_path*.
 
+    Reads sequentially (no seeking) — WebM/VP9 from browser MediaRecorder
+    does not have a seek index, so cap.set(CAP_PROP_POS_FRAMES) silently
+    fails and every seek returns ret=False after frame 0.
+
     Near-black / corrupted frames (mean pixel < 5) are skipped.
     Raises ValueError if the file cannot be opened.
     """
@@ -50,26 +54,25 @@ def extract_frames(
         raise ValueError(f"Cannot open video: {video_path}")
 
     try:
-        total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        if total <= 0:
-            total = max_frames * 10  # cautious fallback when metadata is absent
-
-        step = max(1, total // max_frames)
-        frames: List[np.ndarray] = []
-        pos = 0
-
-        while len(frames) < max_frames:
-            cap.set(cv2.CAP_PROP_POS_FRAMES, pos)
+        all_frames: List[np.ndarray] = []
+        while True:
             ret, frame = cap.read()
             if not ret:
                 break
-            if np.mean(frame) >= 5:          # skip near-black frames
-                frames.append(frame)
-            pos += step
+            if np.mean(frame) >= 5:          # skip near-black / corrupted frames
+                all_frames.append(frame)
     finally:
         cap.release()
 
-    return frames
+    if not all_frames:
+        return []
+
+    # Evenly subsample to at most max_frames
+    if len(all_frames) <= max_frames:
+        return all_frames
+
+    indices = np.linspace(0, len(all_frames) - 1, max_frames, dtype=int)
+    return [all_frames[i] for i in indices]
 
 
 # ---------------------------------------------------------------------------
