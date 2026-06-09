@@ -258,7 +258,7 @@ class DeepfakeDetector:
         return DeepfakeResult(
             is_deepfake=is_deepfake,
             confidence=round(confidence, 4),
-            detection_method="vit_transformer_ensemble",
+            detection_method="vit_xception_ensemble",
             frame_count=len(frames),
             details={
                 "xception_score":     round(x_score,  4) if x_score  is not None else None,
