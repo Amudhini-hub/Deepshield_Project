@@ -122,7 +122,7 @@ class DeepfakeDetector:
             with torch.no_grad():
                 logits = model(batch)                   # (N, 2)
                 probs  = F.softmax(logits, dim=1)       # (N, 2)
-                fake_p = probs[:, 1]                    # (N,) — class 1 = fake
+                fake_p = probs[:, 0]                    # (N,) — class 0 = fake (FF++ Xception convention)
                 return float(fake_p.mean().item()), fake_p.cpu().tolist()
         except Exception as exc:
             logger.warning("[deepfake] %s inference failed: %s", name, exc)
@@ -187,12 +187,11 @@ class DeepfakeDetector:
 
         # ── 4. Ensemble ──────────────────────────────────────────────────
         if hf_score is not None:
-            # Both HF ViT and XceptionNet now have properly trained weights.
-            # EfficientNet-B4 still excluded (classifier.weight/bias missing at
-            # load time → random head, produces ~99% fake on every input).
-            # Weights: 65% HF ViT (fine-tuned ViT) + 35% XceptionNet (FF++ fine-tuned).
+            # Weights: 75% HF ViT (face-cropped) + 25% XceptionNet (FF++ fine-tuned, class0=fake).
+            # HF ViT dominates because it's more reliable with face crops.
+            # EfficientNet-B4 excluded (untrained classifier head).
             x_contrib = x_score if x_score is not None else hf_score
-            ensemble = hf_score * 0.65 + x_contrib * 0.35
+            ensemble = hf_score * 0.75 + x_contrib * 0.25
             anomalies_note = f"hf_score={hf_score:.3f}"
             if en_score is not None:
                 anomalies_note += f" efficientnet={en_score:.3f}(excluded-untrained-head)"
@@ -234,7 +233,7 @@ class DeepfakeDetector:
                     hfs = hf_frame_scores[i] if i < len(hf_frame_scores) else None
                     if hfs is not None:
                         xs_contrib = xs if xs is not None else hfs
-                        score = hfs * 0.65 + xs_contrib * 0.35
+                        score = hfs * 0.75 + xs_contrib * 0.25
                         per_frame.append(score)
                     elif xs is not None and es is not None:
                         per_frame.append(xs * self.xception_w + es * self.efficientnet_w)

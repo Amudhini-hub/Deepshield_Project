@@ -43,9 +43,15 @@ def infer_frames(frames_bgr: List[np.ndarray]) -> Tuple[Optional[float], List[fl
     try:
         import cv2
         from PIL import Image
+        from backend.ml.preprocessing import _crop_to_face
 
         pipe = get_pipeline()
-        pil_frames = [Image.fromarray(cv2.cvtColor(f, cv2.COLOR_BGR2RGB)) for f in frames_bgr]
+        # Face-crop each frame before classification — the model was trained on face images,
+        # not full video frames. Without cropping, it labels everything as real (~0% fake).
+        pil_frames = [
+            Image.fromarray(cv2.cvtColor(_crop_to_face(f), cv2.COLOR_BGR2RGB))
+            for f in frames_bgr
+        ]
 
         results = pipe(pil_frames)
         # pipeline returns list-of-lists when given a list of images
