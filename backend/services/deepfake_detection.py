@@ -187,19 +187,18 @@ class DeepfakeDetector:
 
         # ── 4. Ensemble ──────────────────────────────────────────────────
         if hf_score is not None:
-            # HF model available: fine-tuned ViT is the only reliable signal.
-            # EfficientNet & XceptionNet both have untrained classifier heads
-            # (missing keys at load time) so they produce noisy scores that
-            # contaminate the ensemble.  Use 90% HF + 10% XceptionNet noise
-            # average to keep the "ensemble" story while staying accurate.
+            # Both HF ViT and XceptionNet now have properly trained weights.
+            # EfficientNet-B4 still excluded (classifier.weight/bias missing at
+            # load time → random head, produces ~99% fake on every input).
+            # Weights: 65% HF ViT (fine-tuned ViT) + 35% XceptionNet (FF++ fine-tuned).
             x_contrib = x_score if x_score is not None else hf_score
-            ensemble = hf_score * 0.9 + x_contrib * 0.1
+            ensemble = hf_score * 0.65 + x_contrib * 0.35
             anomalies_note = f"hf_score={hf_score:.3f}"
             if en_score is not None:
                 anomalies_note += f" efficientnet={en_score:.3f}(excluded-untrained-head)"
             if x_score is not None:
                 anomalies_note += f" xception={x_score:.3f}"
-            logger.info("[deepfake] HF-led ensemble: %s → %.3f", anomalies_note, ensemble)
+            logger.info("[deepfake] HF+Xception ensemble: %s → %.3f", anomalies_note, ensemble)
         elif x_score is not None and en_score is not None:
             ensemble = x_score * self.xception_w + en_score * self.efficientnet_w
             if abs(x_score - en_score) > _DISAGREEMENT_THRESHOLD:
@@ -235,7 +234,7 @@ class DeepfakeDetector:
                     hfs = hf_frame_scores[i] if i < len(hf_frame_scores) else None
                     if hfs is not None:
                         xs_contrib = xs if xs is not None else hfs
-                        score = hfs * 0.9 + xs_contrib * 0.1
+                        score = hfs * 0.65 + xs_contrib * 0.35
                         per_frame.append(score)
                     elif xs is not None and es is not None:
                         per_frame.append(xs * self.xception_w + es * self.efficientnet_w)
@@ -259,7 +258,7 @@ class DeepfakeDetector:
         return DeepfakeResult(
             is_deepfake=is_deepfake,
             confidence=round(confidence, 4),
-            detection_method="xception_efficientnet_ensemble",
+            detection_method="vit_transformer_ensemble",
             frame_count=len(frames),
             details={
                 "xception_score":     round(x_score,  4) if x_score  is not None else None,
