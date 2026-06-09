@@ -63,7 +63,7 @@ class DeepfakeDetector:
         self.config = config or {}
 
         # Config keys come from Config.get_config_dict() — all uppercase
-        self.threshold          = float(self.config.get("DEEPFAKE_DETECTION_THRESHOLD", 0.5))
+        self.threshold          = float(self.config.get("DEEPFAKE_DETECTION_THRESHOLD", 0.75))
         self.xception_w         = float(self.config.get("DEEPFAKE_ENSEMBLE_XCEPTION_WEIGHT",     0.6))
         self.efficientnet_w     = float(self.config.get("DEEPFAKE_ENSEMBLE_EFFICIENTNET_WEIGHT", 0.4))
         self.weights_dir        = self.config.get("DEEPFAKE_MODEL_WEIGHTS_DIR", "./ml_models")

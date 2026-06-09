@@ -2,7 +2,7 @@
 
 import { ShieldCheck, ShieldX, AlertTriangle, Clock, Cpu, Eye, Activity } from "lucide-react";
 import type { DetectionResult } from "@/types/detection";
-import { fakePct, riskDecision } from "@/types/detection";
+import { fakePct, authenticityPct, riskDecision } from "@/types/detection";
 import HeatmapVisualization from "@/components/HeatmapVisualization";
 
 // ── Design tokens ─────────────────────────────────────────────────────
@@ -25,10 +25,17 @@ const C = {
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────
-function confColor(pct: number): string {
-  if (pct < 30) return C.success;
-  if (pct < 70) return C.amber;
+// pct = authenticity score (0–100). High = real, low = fake.
+function authColor(pct: number): string {
+  if (pct >= 50) return C.success;
+  if (pct >= 30) return C.amber;
   return C.danger;
+}
+// pct = fake probability (0–100). High = fake = red.
+function fakeColor(pct: number): string {
+  if (pct >= 70) return C.danger;
+  if (pct >= 40) return C.amber;
+  return C.success;
 }
 
 function MiniBar({ value, color }: { value: number; color: string }) {
@@ -143,7 +150,8 @@ export default function DetectionResultCard({ result }: { result: DetectionResul
   if (!result) return <EmptyState />;
 
   const { deepfake: df, liveness: lv, capturedAt } = result;
-  const fp = fakePct(df);                      // 0–100 fake probability
+  const fp = fakePct(df);                      // 0–100 fake probability (unused in display, kept for bar)
+  const auth = authenticityPct(df);            // 0–100 authenticity score (primary display)
   const decision = riskDecision(result);
 
   const decisionMeta = {
@@ -205,7 +213,7 @@ export default function DetectionResultCard({ result }: { result: DetectionResul
             {decisionMeta.label}
           </div>
           <div style={{ fontSize: 12, color: C.body, marginTop: 3 }}>
-            {df.frame_count} frames analysed · {df.detection_method}
+            {df.frame_count} {df.frame_count === 1 ? "frame" : "frames"} analysed · {df.detection_method}
           </div>
         </div>
       </div>
@@ -233,18 +241,18 @@ export default function DetectionResultCard({ result }: { result: DetectionResul
           </span>
         </div>
 
-        {/* Big fake-probability number */}
-        <div style={{ display: "flex", alignItems: "flex-end", gap: 12, marginBottom: "1rem" }}>
+        {/* Authenticity score — high = real, low = fake */}
+        <div style={{ display: "flex", alignItems: "flex-end", gap: 12, marginBottom: "0.75rem" }}>
           <div
             style={{
               fontSize: 48,
               fontWeight: 800,
               lineHeight: 1,
-              color: confColor(fp),
+              color: authColor(auth),
               letterSpacing: -1,
             }}
           >
-            {fp.toFixed(1)}
+            {auth.toFixed(1)}
             <span style={{ fontSize: 22, fontWeight: 600 }}>%</span>
           </div>
           <div style={{ paddingBottom: 6 }}>
@@ -262,21 +270,25 @@ export default function DetectionResultCard({ result }: { result: DetectionResul
             >
               {df.is_deepfake ? "FAKE" : "REAL"}
             </div>
-            <div style={{ fontSize: 11, color: C.muted, marginTop: 3 }}>fake probability</div>
+            <div style={{ fontSize: 11, color: C.muted, marginTop: 3 }}>authenticity score</div>
           </div>
         </div>
 
-        {/* Fake-probability bar */}
-        <div style={{ height: 6, background: "#f3f4f6", borderRadius: 3, overflow: "hidden", marginBottom: "1rem" }}>
+        {/* Authenticity bar — fills right for real faces */}
+        <div style={{ position: "relative", height: 6, background: "#f3f4f6", borderRadius: 3, overflow: "hidden", marginBottom: "0.375rem" }}>
           <div
             style={{
               height: "100%",
-              width: `${fp.toFixed(1)}%`,
-              background: confColor(fp),
+              width: `${auth.toFixed(1)}%`,
+              background: authColor(auth),
               borderRadius: 3,
               transition: "width 0.7s ease",
             }}
           />
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.75rem" }}>
+          <span style={{ fontSize: 10, color: C.muted }}>0% (fake)</span>
+          <span style={{ fontSize: 10, color: C.muted }}>100% (real)</span>
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -320,7 +332,7 @@ export default function DetectionResultCard({ result }: { result: DetectionResul
                 label={key.replace(/_/g, " ")}
                 value={`${(val * 100).toFixed(0)}%`}
                 bar={val}
-                color={confColor(val * 100)}
+                color={fakeColor(val * 100)}
               />
             ))}
           </div>

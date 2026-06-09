@@ -281,7 +281,7 @@ export default function HomePage() {
             </h3>
             <p style={{ fontSize: 14, color: C.body, lineHeight: 1.75, marginBottom: "1.5rem" }}>
               Use the live demo to experience IOB&apos;s deepfake detection pipeline. Allow camera access,
-              position your face, and get a verification decision in under a second.
+              position your face, and get a verification decision in seconds.
             </p>
             <BtnGold href="/demo" size="lg">Launch Identity Verification →</BtnGold>
           </div>
