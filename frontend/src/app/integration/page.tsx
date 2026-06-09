@@ -213,11 +213,11 @@ export default function IntegrationPage() {
             Integration guide
           </div>
           <h1 style={{ fontSize: 36, fontWeight: 700, color: C.heading, marginBottom: 10 }}>
-            Banks integrate in 5 lines of code
+            Banks integrate with a REST API
           </h1>
           <p style={{ fontSize: 16, color: C.body, maxWidth: 600, lineHeight: 1.7 }}>
             DeepShield is API-first. No SDK required. Call our REST endpoints
-            from any language and get a structured fraud decision in under 800ms.
+            from any language and get a structured fraud decision in real-time.
           </p>
         </div>
 

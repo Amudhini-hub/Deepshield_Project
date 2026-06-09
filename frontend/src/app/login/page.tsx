@@ -280,8 +280,8 @@ export default function LoginPage() {
             {/* Security indicators */}
             <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", justifyContent: "center", marginTop: "1.5rem", paddingTop: "1.25rem", borderTop: `1px solid ${C.border}` }}>
               {[
-                { icon: ShieldCheck, label: "256-bit SSL" },
-                { icon: Lock, label: "End-to-End Encrypted" },
+                { icon: ShieldCheck, label: "TLS Encrypted" },
+                { icon: Lock, label: "JWT Sessions" },
                 { icon: Shield, label: "AI Fraud Detection" },
               ].map(({ icon: Icon, label }) => (
                 <div

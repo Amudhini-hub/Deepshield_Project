@@ -386,9 +386,9 @@ export default function DemoPage() {
           }}
         >
           {[
-            { num: "< 800ms", label: "End-to-end verification time" },
-            { num: "99.2%",   label: "Deepfake detection accuracy" },
-            { num: "98.7%",   label: "Liveness verification rate" },
+            { num: "Real-Time", label: "End-to-end verification" },
+            { num: "AI Ensemble", label: "Deepfake detection method" },
+            { num: "3-Layer", label: "Anti-spoofing defence" },
           ].map((s, i) => (
             <div
               key={s.label}

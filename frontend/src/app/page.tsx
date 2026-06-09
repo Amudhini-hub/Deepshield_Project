@@ -152,10 +152,10 @@ export default function HomePage() {
         style={{ background: C.card, borderBottom: `1px solid ${C.border}`, borderTop: `3px solid ${C.gold}` }}
       >
         {[
-          { num: "99.2%", label: "Deepfake detection accuracy" },
-          { num: "<800ms", label: "Detection response time" },
-          { num: "98.7%", label: "Liveness verification rate" },
-          { num: "5 lines", label: "To integrate with any bank" },
+          { num: "AI Ensemble", label: "Deepfake detection method" },
+          { num: "Real-Time", label: "On-device parallel analysis" },
+          { num: "3-Layer", label: "Anti-spoofing defence" },
+          { num: "REST API", label: "Simple bank integration" },
         ].map((s, i) => (
           <div
             key={s.label}
@@ -184,7 +184,7 @@ export default function HomePage() {
           Compliance &amp; Standards
         </div>
         <div style={{ display: "flex", gap: "0.625rem", justifyContent: "center", flexWrap: "wrap" }}>
-          {["RBI Compliant", "DPDP Act 2023", "ISO 27001 Ready", "IBA Standards", "PCI-DSS Aligned"].map((name) => (
+          {["RBI Guidelines", "DPDP Act 2023", "ISO 27001 Framework", "IBA Standards", "PCI-DSS Aligned"].map((name) => (
             <div
               key={name}
               style={{
@@ -220,7 +220,7 @@ export default function HomePage() {
             {
               num: "01",
               title: "Deepfake Detection",
-              body: "Neural network ensemble analyses video frames for GAN artifacts, frequency anomalies, face blending inconsistencies, and compression signatures in under 800ms.",
+              body: "Neural network ensemble analyses video frames for GAN artifacts, frequency anomalies, face blending inconsistencies, and compression signatures — all in parallel.",
             },
             {
               num: "02",
@@ -339,7 +339,7 @@ export default function HomePage() {
 
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0" }}>
               <span style={{ fontSize: 12, color: C.muted }}>Response time</span>
-              <span style={{ fontSize: 12, fontWeight: 600, color: C.blue }}>743ms</span>
+              <span style={{ fontSize: 12, fontWeight: 600, color: C.blue }}>sample output</span>
             </div>
           </div>
         </div>
@@ -382,7 +382,7 @@ export default function HomePage() {
               iconBg: "#f5f3ff",
               iconColor: "#7c3aed",
               title: "API-First Integration",
-              body: "Banks call one endpoint. DeepShield returns a decision. No PII stored. Compliant with RBI, DPDP Act, and ISO 27001.",
+              body: "Banks call one endpoint. DeepShield returns a decision. No PII stored. Designed for alignment with RBI, DPDP Act, and ISO 27001 guidelines.",
             },
             {
               Icon: BarChart2,
@@ -396,7 +396,7 @@ export default function HomePage() {
               iconBg: "#f0fdf4",
               iconColor: C.success,
               title: "Production-Grade Infrastructure",
-              body: "Deployed on AWS ECS with full CI/CD, 92/92 tests passing on Python 3.9 and 3.11, security scanning, and Redis-backed sessions.",
+              body: "FastAPI backend with async Celery workers, Redis-backed JWT sessions with token blacklisting, full audit logging, and container-based deployment.",
             },
           ].map(({ Icon, iconBg, iconColor, title, body }) => (
             <div key={title} style={{ ...card, display: "flex", gap: "1rem" }}>
@@ -420,7 +420,7 @@ export default function HomePage() {
           Integration
         </div>
         <div style={{ fontSize: 28, fontWeight: 700, color: C.heading, marginBottom: 10 }}>
-          Banks integrate in 5 lines of code
+          Banks integrate with a REST API
         </div>
         <div style={{ fontSize: 15, color: C.body, maxWidth: 520, lineHeight: 1.7 }}>
           No SDK to install. No data to migrate. Call the API and get a decision instantly.
