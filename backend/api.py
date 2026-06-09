@@ -7,10 +7,14 @@ import base64
 import logging
 import os
 import tempfile
-from datetime import datetime
+import uuid
+from datetime import datetime, timezone
 from typing import Optional
 
 from celery.result import AsyncResult
+
+# In-memory fallback: stores results when Celery/Redis are unavailable (demo mode).
+_sync_task_cache: dict = {}
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
@@ -62,6 +66,17 @@ api_router = APIRouter(tags=["deepshield"])
 # Token blacklist for logout (in production, use Redis)
 TOKEN_BLACKLIST = set()
 
+# Demo mode: a lightweight stand-in returned when the DB is unavailable.
+_DEMO_USER_ID = 0
+
+
+class _DemoUser:
+    """Minimal User-like object used when PostgreSQL is not reachable."""
+    id         = _DEMO_USER_ID
+    email      = "demo@deepshield.ai"
+    is_active  = True
+    full_name  = "Demo User"
+
 
 # ==================== DEPENDENCY INJECTION ====================
 
@@ -103,6 +118,10 @@ def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    # Demo user bypasses DB entirely — works when PostgreSQL is not running.
+    if int(user_id) == _DEMO_USER_ID:
+        return _DemoUser()
+
     try:
         user = crud.get_user(db, int(user_id))
         if user is None:
@@ -118,6 +137,8 @@ def get_current_user(
                 headers={"WWW-Authenticate": "Bearer"},
             )
         return user
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error getting current user: {e}")
         raise HTTPException(
@@ -226,6 +247,17 @@ async def login_user(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error during authentication",
         )
+
+
+@api_router.post(
+    "/users/demo-token",
+    status_code=status.HTTP_200_OK,
+    summary="Get a demo JWT (no DB required)",
+)
+async def demo_token() -> dict:
+    """Issue a short-lived demo token for the hackathon demo (no database needed)."""
+    access_token = create_access_token({"sub": str(_DEMO_USER_ID)})
+    return {"access_token": access_token, "token_type": "bearer"}
 
 
 @api_router.post(
@@ -591,6 +623,93 @@ def _validate_video_upload(file: UploadFile, video_data: bytes) -> None:
         )
 
 
+# Synchronous detection helpers — used when Celery/Redis are unavailable.
+_deepfake_detector_sync = None
+_liveness_detector_sync = None
+
+
+def _get_deepfake_detector_sync():
+    global _deepfake_detector_sync
+    if _deepfake_detector_sync is None:
+        from backend.services.deepfake_detection import DeepfakeDetector
+        _deepfake_detector_sync = DeepfakeDetector(config=config.get_config_dict())
+    return _deepfake_detector_sync
+
+
+def _get_liveness_detector_sync():
+    global _liveness_detector_sync
+    if _liveness_detector_sync is None:
+        from backend.services.liveness_detection import LivenessDetector
+        _liveness_detector_sync = LivenessDetector(config=config.get_config_dict())
+    return _liveness_detector_sync
+
+
+def _run_deepfake_sync(video_b64: str, user_id: int, generate_heatmap: bool = True) -> dict:
+    import time
+    start = time.monotonic()
+    video_bytes = base64.b64decode(video_b64)
+    tmp_fd, video_path = tempfile.mkstemp(suffix=".mp4")
+    try:
+        with os.fdopen(tmp_fd, "wb") as f:
+            f.write(video_bytes)
+        tmp_fd = None
+        result = _get_deepfake_detector_sync().detect_from_video(
+            video_path, max_frames=8, generate_heatmap=generate_heatmap
+        )
+        return {
+            "user_id":             user_id,
+            "is_deepfake":         result.is_deepfake,
+            "confidence":          result.confidence,
+            "detection_method":    result.detection_method,
+            "frame_count":         result.frame_count,
+            "details":             result.details,
+            "anomalies":           result.anomalies,
+            "heatmap_frame":       result.heatmap_frame,
+            "heatmap_frame_index": result.heatmap_frame_index,
+            "timestamp":           datetime.now(timezone.utc).isoformat(),
+        }
+    finally:
+        if tmp_fd is not None:
+            try:
+                os.close(tmp_fd)
+            except OSError:
+                pass
+        if video_path and os.path.exists(video_path):
+            try:
+                os.remove(video_path)
+            except Exception:
+                pass
+
+
+def _run_liveness_sync(video_b64: str, user_id: int) -> dict:
+    video_bytes = base64.b64decode(video_b64)
+    tmp_fd, video_path = tempfile.mkstemp(suffix=".mp4")
+    try:
+        with os.fdopen(tmp_fd, "wb") as f:
+            f.write(video_bytes)
+        tmp_fd = None
+        result = _get_liveness_detector_sync().detect_from_video(video_path, max_frames=20)
+        return {
+            "user_id":        user_id,
+            "is_alive":       result.is_alive,
+            "confidence":     result.confidence,
+            "challenge_type": result.challenge_type,
+            "frame_count":    result.frame_count,
+            "details":        result.details,
+            "timestamp":      datetime.now(timezone.utc).isoformat(),
+        }
+    finally:
+        if tmp_fd is not None:
+            try:
+                os.close(tmp_fd)
+            except OSError:
+                pass
+        if video_path and os.path.exists(video_path):
+            try:
+                os.remove(video_path)
+            except Exception:
+                pass
+
 
 @api_router.post(
     "/deepfake/detect",
@@ -610,30 +729,35 @@ async def detect_deepfake(
     video_b64 = base64.b64encode(video_data).decode("ascii")
     try:
         task = detect_deepfake_task.delay(video_b64, current_user.id, heatmap)
+        task_id = task.id
+        # Register task ID in Redis so the polling endpoint can return 404 for unknown IDs.
+        try:
+            from backend.redis_manager import get_redis_manager
+            rm = get_redis_manager()
+            if rm.redis_client:
+                rm.redis_client.setex(f"ds:task:{task_id}", 7200, "1")
+        except Exception:
+            pass
     except Exception as exc:
-        logger.error(f"Failed to queue deepfake task: {exc}")
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Detection queue unavailable — please try again later",
-        )
+        logger.warning(f"Celery unavailable, running deepfake detection synchronously: {exc}")
+        task_id = str(uuid.uuid4())
+        try:
+            result_dict = _run_deepfake_sync(video_b64, current_user.id, heatmap)
+            _sync_task_cache[task_id] = {"status": "SUCCESS", "result": result_dict}
+        except Exception as sync_exc:
+            _sync_task_cache[task_id] = {"status": "FAILURE", "error": str(sync_exc)}
 
-    # Register task ID in Redis so the polling endpoint can return 404 for unknown IDs.
     try:
-        from backend.redis_manager import get_redis_manager
-        rm = get_redis_manager()
-        if rm.redis_client:
-            rm.redis_client.setex(f"ds:task:{task.id}", 7200, "1")
+        crud.create_audit_log(
+            db,
+            str(current_user.id),
+            "DEEPFAKE_DETECTION_QUEUED",
+            {"task_id": task_id, "timestamp": datetime.utcnow().isoformat()},
+        )
     except Exception:
         pass
-
-    crud.create_audit_log(
-        db,
-        str(current_user.id),
-        "DEEPFAKE_DETECTION_QUEUED",
-        {"task_id": task.id, "timestamp": datetime.utcnow().isoformat()},
-    )
-    logger.info(f"Deepfake detection queued: task_id={task.id} user_id={current_user.id}")
-    return {"task_id": task.id, "status": "queued"}
+    logger.info(f"Deepfake detection queued/run: task_id={task_id} user_id={current_user.id}")
+    return {"task_id": task_id, "status": "queued"}
 
 
 @api_router.post(
@@ -653,29 +777,34 @@ async def detect_liveness(
     video_b64 = base64.b64encode(video_data).decode("ascii")
     try:
         task = detect_liveness_task.delay(video_b64, current_user.id)
+        task_id = task.id
+        try:
+            from backend.redis_manager import get_redis_manager
+            rm = get_redis_manager()
+            if rm.redis_client:
+                rm.redis_client.setex(f"ds:task:{task_id}", 7200, "1")
+        except Exception:
+            pass
     except Exception as exc:
-        logger.error(f"Failed to queue liveness task: {exc}")
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Detection queue unavailable — please try again later",
-        )
+        logger.warning(f"Celery unavailable, running liveness detection synchronously: {exc}")
+        task_id = str(uuid.uuid4())
+        try:
+            result_dict = _run_liveness_sync(video_b64, current_user.id)
+            _sync_task_cache[task_id] = {"status": "SUCCESS", "result": result_dict}
+        except Exception as sync_exc:
+            _sync_task_cache[task_id] = {"status": "FAILURE", "error": str(sync_exc)}
 
     try:
-        from backend.redis_manager import get_redis_manager
-        rm = get_redis_manager()
-        if rm.redis_client:
-            rm.redis_client.setex(f"ds:task:{task.id}", 7200, "1")
+        crud.create_audit_log(
+            db,
+            str(current_user.id),
+            "LIVENESS_DETECTION_QUEUED",
+            {"task_id": task_id, "timestamp": datetime.utcnow().isoformat()},
+        )
     except Exception:
         pass
-
-    crud.create_audit_log(
-        db,
-        str(current_user.id),
-        "LIVENESS_DETECTION_QUEUED",
-        {"task_id": task.id, "timestamp": datetime.utcnow().isoformat()},
-    )
-    logger.info(f"Liveness detection queued: task_id={task.id} user_id={current_user.id}")
-    return {"task_id": task.id, "status": "queued"}
+    logger.info(f"Liveness detection queued/run: task_id={task_id} user_id={current_user.id}")
+    return {"task_id": task_id, "status": "queued"}
 
 
 # ── Task polling ───────────────────────────────────────────────────────────────
@@ -688,6 +817,16 @@ async def detect_liveness(
 )
 async def get_task_status(task_id: str) -> dict:
     """Return the current state of a queued detection task."""
+    # Sync-fallback results (when Celery/Redis are unavailable)
+    if task_id in _sync_task_cache:
+        cached = _sync_task_cache[task_id]
+        return {
+            "task_id": task_id,
+            "status": cached["status"],
+            "result": cached.get("result"),
+            "error": cached.get("error"),
+        }
+
     # Verify the task was actually created by this service.
     try:
         from backend.redis_manager import get_redis_manager
