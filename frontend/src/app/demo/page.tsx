@@ -7,7 +7,7 @@ import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
 import WebcamCapture from "@/components/WebcamCapture";
 import DetectionResultCard from "@/components/DetectionResult";
-import { login, register } from "@/lib/api";
+import { api, login, register } from "@/lib/api";
 import { isAuthenticated, setToken } from "@/lib/auth";
 import type { DetectionResult } from "@/types/detection";
 
@@ -44,7 +44,14 @@ function QuickDemoBanner({ onReady }: { onReady: () => void }) {
       setToken(res.access_token);
       onReady();
     } catch {
-      setError("Quick demo setup failed. Please sign in with an existing account.");
+      // DB unavailable — fall back to the no-auth demo token
+      try {
+        const r = await api.post<{ access_token: string }>("/users/demo-token");
+        setToken(r.data.access_token);
+        onReady();
+      } catch {
+        setError("Demo setup failed. Ensure the backend is running.");
+      }
     } finally {
       setLoading(false);
     }
@@ -253,7 +260,7 @@ export default function DemoPage() {
             Identity Verification
           </h1>
           <p style={{ fontSize: 14, color: C.body }}>
-            Allow camera access, face the lens, and click <strong>Capture &amp; Analyse</strong> — DeepShield completes the full biometric verification in under a second.
+            Allow camera access, face the lens, and click <strong>Capture &amp; Analyse</strong> — DeepShield completes the full biometric verification in seconds.
           </p>
         </div>
 
@@ -386,7 +393,7 @@ export default function DemoPage() {
           }}
         >
           {[
-            { num: "Real-Time", label: "End-to-end verification" },
+            { num: "AI-Powered", label: "End-to-end verification" },
             { num: "AI Ensemble", label: "Deepfake detection method" },
             { num: "3-Layer", label: "Anti-spoofing defence" },
           ].map((s, i) => (
