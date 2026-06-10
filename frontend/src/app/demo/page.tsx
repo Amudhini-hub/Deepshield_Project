@@ -7,7 +7,7 @@ import Nav from "@/components/Nav";
 import Footer from "@/components/Footer";
 import WebcamCapture from "@/components/WebcamCapture";
 import DetectionResultCard from "@/components/DetectionResult";
-import { api, login, register } from "@/lib/api";
+import { api } from "@/lib/api";
 import { isAuthenticated, setToken } from "@/lib/auth";
 import type { DetectionResult } from "@/types/detection";
 
@@ -27,7 +27,7 @@ const C = {
   success: "#16a34a",
 };
 
-// ── Quick demo: auto-register an ephemeral account ─────────────────────
+// ── Quick demo: one-call demo token, no registration needed ───────────
 function QuickDemoBanner({ onReady }: { onReady: () => void }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -35,23 +35,12 @@ function QuickDemoBanner({ onReady }: { onReady: () => void }) {
   async function handleQuickDemo() {
     setLoading(true);
     setError("");
-    const uid = Date.now();
-    const demoEmail = `demo.${uid}@deepshield.demo`;
-    const demoPass = `Demo${uid}!`;
     try {
-      await register(demoEmail, demoPass);
-      const res = await login(demoEmail, demoPass);
-      setToken(res.access_token);
+      const r = await api.post<{ access_token: string }>("/users/demo-token");
+      setToken(r.data.access_token);
       onReady();
     } catch {
-      // DB unavailable — fall back to the no-auth demo token
-      try {
-        const r = await api.post<{ access_token: string }>("/users/demo-token");
-        setToken(r.data.access_token);
-        onReady();
-      } catch {
-        setError("Demo setup failed. Ensure the backend is running.");
-      }
+      setError("Demo setup failed. Ensure the backend is running on port 8000.");
     } finally {
       setLoading(false);
     }
@@ -194,24 +183,11 @@ function Eye2({ size }: { size: number }) {
 export default function DemoPage() {
   const router = useRouter();
   const [authed, setAuthed] = useState(false);
-  const [checking, setChecking] = useState(true);
   const [result, setResult] = useState<DetectionResult | null>(null);
 
   useEffect(() => {
     setAuthed(isAuthenticated());
-    setChecking(false);
   }, []);
-
-  if (checking) {
-    return (
-      <div style={{ background: C.bg, minHeight: "100vh", display: "flex", flexDirection: "column" }}>
-        <Nav />
-        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <Loader2 size={32} color={C.blue} className="animate-spin" />
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div style={{ background: C.bg, minHeight: "100vh", display: "flex", flexDirection: "column" }}>

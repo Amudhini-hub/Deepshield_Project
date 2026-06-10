@@ -252,12 +252,12 @@ export default function WebcamCapture({ onResult }: Props) {
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────
-  // If face-api.js failed to load we skip the face-detection gate entirely
-  // so the user can still capture — the backend does its own face detection.
+  // Allow capture before face-api.js finishes loading — models add the overlay
+  // but aren't required for backend detection. Gate only when loaded + no face.
   const canCapture =
     camStatus === "active" &&
     (phase === "ready" || phase === "done" || phase === "error") &&
-    (faaLoadFailed || (modelsLoaded && faceDetected));
+    (faaLoadFailed || !modelsLoaded || faceDetected);
 
   // ── Render ────────────────────────────────────────────────────────────
   return (

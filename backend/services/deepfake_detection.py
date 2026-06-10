@@ -169,16 +169,15 @@ class DeepfakeDetector:
         en_batch = preprocess_batch(frames, _EFFICIENTNET_SIZE,  self.device)
 
         # ── 3. Inference ────────────────────────────────────────────────
-        x_score,  x_frame_scores  = self._infer(self.xception,    x_batch,  "xception")
-        en_score, en_frame_scores = self._infer(self.efficientnet, en_batch, "efficientnet")
+        x_score,  x_frame_scores = self._infer(self.xception,    x_batch,  "xception")
+        en_score, _              = self._infer(self.efficientnet, en_batch, "efficientnet")
 
         # HuggingFace fine-tuned model (highest weight — actually trained on deepfakes)
         hf_score: Optional[float] = None
-        hf_frame_scores: List[float] = []
         if self._hf_available:
             try:
                 from backend.ml.hf_detector import infer_frames
-                hf_score, hf_frame_scores = infer_frames(frames)
+                hf_score, _ = infer_frames(frames)
             except Exception as exc:
                 logger.warning("[deepfake] HF inference failed at task time: %s", exc)
 
@@ -187,17 +186,11 @@ class DeepfakeDetector:
 
         # ── 4. Ensemble ──────────────────────────────────────────────────
         if hf_score is not None:
-            # Weights: 75% HF ViT (face-cropped) + 25% XceptionNet (FF++ fine-tuned, class0=fake).
-            # HF ViT dominates because it's more reliable with face crops.
-            # EfficientNet-B4 excluded (untrained classifier head).
-            x_contrib = x_score if x_score is not None else hf_score
-            ensemble = hf_score * 0.75 + x_contrib * 0.25
-            anomalies_note = f"hf_score={hf_score:.3f}"
-            if en_score is not None:
-                anomalies_note += f" efficientnet={en_score:.3f}(excluded-untrained-head)"
-            if x_score is not None:
-                anomalies_note += f" xception={x_score:.3f}"
-            logger.info("[deepfake] HF+Xception ensemble: %s → %.3f", anomalies_note, ensemble)
+            # HF ViT only — XceptionNet scores real faces at 80-99% (no discrimination),
+            # so including it pulls the ensemble toward fake for genuine users.
+            ensemble = hf_score
+            logger.info("[deepfake] HF ViT only: hf=%.3f xception=%.3f(excluded) → %.3f",
+                        hf_score, x_score if x_score is not None else -1, ensemble)
         elif x_score is not None and en_score is not None:
             ensemble = x_score * self.xception_w + en_score * self.efficientnet_w
             if abs(x_score - en_score) > _DISAGREEMENT_THRESHOLD:
@@ -225,26 +218,13 @@ class DeepfakeDetector:
                 import cv2
                 from backend.ml.gradcam import generate_ensemble_heatmap
 
-                # Build per-frame ensemble scores to find the most suspicious frame
-                per_frame: List[float] = []
-                for i in range(len(frames)):
-                    xs  = x_frame_scores[i]  if i < len(x_frame_scores)  else None
-                    es  = en_frame_scores[i] if i < len(en_frame_scores) else None
-                    hfs = hf_frame_scores[i] if i < len(hf_frame_scores) else None
-                    if hfs is not None:
-                        xs_contrib = xs if xs is not None else hfs
-                        score = hfs * 0.75 + xs_contrib * 0.25
-                        per_frame.append(score)
-                    elif xs is not None and es is not None:
-                        per_frame.append(xs * self.xception_w + es * self.efficientnet_w)
-                    elif xs is not None:
-                        per_frame.append(xs)
-                    elif es is not None:
-                        per_frame.append(es)
-                    else:
-                        per_frame.append(0.0)
-
-                idx = int(np.argmax(per_frame)) if per_frame else 0
+                # Use XceptionNet per-frame scores to pick the most suspicious frame —
+                # they map 1:1 to frames[], unlike hf_frame_scores which only covers
+                # face-detected frames after the crop-filter fix.
+                if x_frame_scores:
+                    idx = int(np.argmax(x_frame_scores))
+                else:
+                    idx = 0
                 annotated = generate_ensemble_heatmap(
                     frames[idx], self.xception, self.efficientnet, self.device
                 )

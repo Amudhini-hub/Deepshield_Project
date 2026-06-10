@@ -159,7 +159,7 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (isAuthenticated()) router.replace("/dashboard");
+    if (isAuthenticated()) router.replace("/demo");
   }, [router]);
 
   const passwordsMatch = confirm.length > 0 && password === confirm;
@@ -178,7 +178,7 @@ export default function RegisterPage() {
       // Auto-login immediately after registering
       const res = await login(email, password);
       setToken(res.access_token);
-      router.push("/dashboard");
+      router.push("/demo");
     } catch (err: unknown) {
       const detail =
         (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;

@@ -32,9 +32,9 @@ export default function HeatmapVisualization({ heatmapBase64, isDeepfake, confid
           background: "#fafbff",
         }}
       >
-        <div style={{ fontSize: 13, color: "#9ca3af" }}>Visualization unavailable</div>
+        <div style={{ fontSize: 13, color: "#9ca3af" }}>Heatmap unavailable</div>
         <div style={{ fontSize: 11, color: "#c4c9d4" }}>
-          Heatmap is generated when Celery worker is running
+          Could not generate attention map for this capture
         </div>
       </div>
     );

@@ -110,7 +110,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (isAuthenticated()) router.replace("/dashboard");
+    if (isAuthenticated()) router.replace("/demo");
   }, [router]);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -120,7 +120,7 @@ export default function LoginPage() {
     try {
       const res = await login(email, password);
       setToken(res.access_token);
-      router.push("/dashboard");
+      router.push("/demo");
     } catch (err: unknown) {
       const detail =
         (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;

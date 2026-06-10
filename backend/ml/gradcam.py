@@ -193,8 +193,9 @@ def generate_ensemble_heatmap(
     gc_en = GradCAM(efficientnet_model, _EFFICIENTNET_TARGET)
 
     try:
-        x_cam  = gc_x.generate(x_tensor)
-        en_cam = gc_en.generate(en_tensor)
+        # class 0 = fake for both XceptionNet and EfficientNet (FF++ convention)
+        x_cam  = gc_x.generate(x_tensor,  target_class=0)
+        en_cam = gc_en.generate(en_tensor, target_class=0)
     finally:
         gc_x.cleanup()
         gc_en.cleanup()

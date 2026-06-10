@@ -37,9 +37,14 @@ export function fakePct(r: DeepfakeResponse): number {
   return r.confidence * 100;
 }
 
-/** Returns authenticity score (0–100): 100 = definitely real, 0 = definitely fake. */
+/** Returns authenticity score (0–100): 100 = definitely real, 0 = definitely fake.
+ *  Uses a sigmoid centred at the detection threshold (0.75) so real faces display
+ *  70–95% real and deepfakes display 15–40% real, giving a clear visual split.
+ */
 export function authenticityPct(r: DeepfakeResponse): number {
-  return (1 - r.confidence) * 100;
+  const k = 7.24;       // steepness — calibrated so 63% fake → 70% real display
+  const t = 0.75;       // threshold (same as backend DEEPFAKE_DETECTION_THRESHOLD)
+  return (1 / (1 + Math.exp(k * (r.confidence - t)))) * 100;
 }
 
 /** Returns "ALLOW" | "CHALLENGE" | "BLOCK" based on detection results. */

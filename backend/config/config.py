@@ -167,7 +167,7 @@ class Config:
 
     # Deployment settings
     ENVIRONMENT     = os.getenv("ENVIRONMENT", "development")
-    ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+    ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://192.168.56.1:3000").split(",")
 
     @classmethod
     def get_config_dict(cls) -> Dict[str, Any]:

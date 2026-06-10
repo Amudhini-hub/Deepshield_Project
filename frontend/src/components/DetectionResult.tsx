@@ -2,7 +2,7 @@
 
 import { ShieldCheck, ShieldX, AlertTriangle, Clock, Cpu, Eye, Activity } from "lucide-react";
 import type { DetectionResult } from "@/types/detection";
-import { fakePct, authenticityPct, riskDecision } from "@/types/detection";
+import { authenticityPct, riskDecision } from "@/types/detection";
 import HeatmapVisualization from "@/components/HeatmapVisualization";
 
 // ── Design tokens ─────────────────────────────────────────────────────
@@ -25,17 +25,11 @@ const C = {
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────
-// pct = authenticity score (0–100). High = real, low = fake.
+// pct = authenticity score (0–100, after sigmoid transform). High = real, low = fake.
 function authColor(pct: number): string {
-  if (pct >= 50) return C.success;
-  if (pct >= 30) return C.amber;
-  return C.danger;
-}
-// pct = fake probability (0–100). High = fake = red.
-function fakeColor(pct: number): string {
-  if (pct >= 70) return C.danger;
+  if (pct >= 55) return C.success;
   if (pct >= 40) return C.amber;
-  return C.success;
+  return C.danger;
 }
 
 function MiniBar({ value, color }: { value: number; color: string }) {
@@ -150,8 +144,7 @@ export default function DetectionResultCard({ result }: { result: DetectionResul
   if (!result) return <EmptyState />;
 
   const { deepfake: df, liveness: lv, capturedAt } = result;
-  const fp = fakePct(df);                      // 0–100 fake probability (unused in display, kept for bar)
-  const auth = authenticityPct(df);            // 0–100 authenticity score (primary display)
+  const auth = authenticityPct(df);            // 0–100 authenticity score (primary display, sigmoid-scaled)
   const decision = riskDecision(result);
 
   const decisionMeta = {
@@ -182,11 +175,6 @@ export default function DetectionResultCard({ result }: { result: DetectionResul
 
   // Per-check breakdown from liveness details (if backend includes them)
   const livenessChecks = Object.entries(lv.details ?? {}).filter(
-    ([, v]) => typeof v === "number"
-  ) as [string, number][];
-
-  // Per-check breakdown from deepfake details
-  const dfChecks = Object.entries(df.details ?? {}).filter(
     ([, v]) => typeof v === "number"
   ) as [string, number][];
 
@@ -320,23 +308,6 @@ export default function DetectionResultCard({ result }: { result: DetectionResul
           </div>
         )}
 
-        {/* Per-check breakdown if backend provides them */}
-        {dfChecks.length > 0 && (
-          <div style={{ marginTop: "0.875rem", display: "flex", flexDirection: "column", gap: 8 }}>
-            <div style={{ fontSize: 11, color: C.muted, fontWeight: 600, letterSpacing: 0.5 }}>
-              SIGNAL BREAKDOWN
-            </div>
-            {dfChecks.map(([key, val]) => (
-              <Row
-                key={key}
-                label={key.replace(/_/g, " ")}
-                value={`${(val * 100).toFixed(0)}%`}
-                bar={val}
-                color={fakeColor(val * 100)}
-              />
-            ))}
-          </div>
-        )}
       </div>
 
       {/* ── Grad-CAM heatmap ── */}
@@ -351,7 +322,7 @@ export default function DetectionResultCard({ result }: { result: DetectionResul
         <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: "1rem" }}>
           <Cpu size={14} color={C.primary} />
           <span style={{ fontSize: 12, fontWeight: 600, color: C.muted, letterSpacing: 1, textTransform: "uppercase" }}>
-            AI Heatmap Visualization
+            AI Attention Map
           </span>
         </div>
         <HeatmapVisualization

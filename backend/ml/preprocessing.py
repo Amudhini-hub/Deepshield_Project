@@ -85,7 +85,7 @@ def _largest_face_roi(
     """Return (x, y, w, h) for the largest face in *frame_bgr*, or None."""
     gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
     faces = _get_face_cascade().detectMultiScale(
-        gray, scaleFactor=1.1, minNeighbors=5, minSize=(60, 60)
+        gray, scaleFactor=1.1, minNeighbors=3, minSize=(30, 30)
     )
     if len(faces) == 0:
         return None
@@ -95,7 +95,8 @@ def _largest_face_roi(
 def _crop_to_face(frame_bgr: np.ndarray, padding: float = 0.2) -> np.ndarray:
     """
     Crop around the largest detected face (with padding).
-    Falls back to a centre square crop when no face is detected.
+    Returns the full frame when no face is detected — center-square crops
+    confuse the ViT model when no face is present.
     """
     h, w = frame_bgr.shape[:2]
     roi = _largest_face_roi(frame_bgr)
@@ -110,11 +111,8 @@ def _crop_to_face(frame_bgr: np.ndarray, padding: float = 0.2) -> np.ndarray:
         y2 = min(h, y + fh + pad_y)
         return frame_bgr[y1:y2, x1:x2]
 
-    # Centre square crop
-    side = min(h, w)
-    cy, cx = h // 2, w // 2
-    half = side // 2
-    return frame_bgr[cy - half : cy + half, cx - half : cx + half]
+    # No face detected — return full frame (avoids misaligned center crops)
+    return frame_bgr
 
 
 # ---------------------------------------------------------------------------

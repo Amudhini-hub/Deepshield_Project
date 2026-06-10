@@ -38,20 +38,33 @@ def get_pipeline():
 def infer_frames(frames_bgr: List[np.ndarray]) -> Tuple[Optional[float], List[float]]:
     """
     Run HF classifier over a list of BGR frames.
+    Only frames with a detected face are passed to the model — center-square crops
+    from no-face frames score ~99% fake and corrupt the mean.
     Returns (mean_fake_prob, per_frame_probs) or (None, []) on failure.
     """
     try:
         import cv2
         from PIL import Image
-        from backend.ml.preprocessing import _crop_to_face
+        from backend.ml.preprocessing import _crop_to_face, _largest_face_roi
 
         pipe = get_pipeline()
-        # Face-crop each frame before classification — the model was trained on face images,
-        # not full video frames. Without cropping, it labels everything as real (~0% fake).
-        pil_frames = [
-            Image.fromarray(cv2.cvtColor(_crop_to_face(f), cv2.COLOR_BGR2RGB))
-            for f in frames_bgr
-        ]
+
+        # Build list of PIL face-crops, skipping frames where no face is found
+        pil_frames = []
+        for f in frames_bgr:
+            if _largest_face_roi(f) is not None:
+                crop = _crop_to_face(f)
+                pil_frames.append(Image.fromarray(cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)))
+
+        if not pil_frames:
+            # No face detected in any frame — fall back to full frames
+            logger.warning("[hf_detector] no face detected in %d frames, using full frames", len(frames_bgr))
+            pil_frames = [
+                Image.fromarray(cv2.cvtColor(f, cv2.COLOR_BGR2RGB))
+                for f in frames_bgr
+            ]
+
+        logger.info("[hf_detector] running inference on %d/%d frames with face", len(pil_frames), len(frames_bgr))
 
         results = pipe(pil_frames)
         # pipeline returns list-of-lists when given a list of images

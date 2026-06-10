@@ -644,17 +644,15 @@ def _get_liveness_detector_sync():
     return _liveness_detector_sync
 
 
-def _run_deepfake_sync(video_b64: str, user_id: int, generate_heatmap: bool = True) -> dict:
-    import time
-    start = time.monotonic()
+def _run_deepfake_sync(video_b64: str, user_id: int, generate_heatmap: bool = False) -> dict:
     video_bytes = base64.b64decode(video_b64)
-    tmp_fd, video_path = tempfile.mkstemp(suffix=".mp4")
+    tmp_fd, video_path = tempfile.mkstemp(suffix=".webm")
     try:
         with os.fdopen(tmp_fd, "wb") as f:
             f.write(video_bytes)
         tmp_fd = None
         result = _get_deepfake_detector_sync().detect_from_video(
-            video_path, max_frames=8, generate_heatmap=generate_heatmap
+            video_path, max_frames=10, generate_heatmap=True
         )
         return {
             "user_id":             user_id,
@@ -683,7 +681,7 @@ def _run_deepfake_sync(video_b64: str, user_id: int, generate_heatmap: bool = Tr
 
 def _run_liveness_sync(video_b64: str, user_id: int) -> dict:
     video_bytes = base64.b64decode(video_b64)
-    tmp_fd, video_path = tempfile.mkstemp(suffix=".mp4")
+    tmp_fd, video_path = tempfile.mkstemp(suffix=".webm")
     try:
         with os.fdopen(tmp_fd, "wb") as f:
             f.write(video_bytes)
@@ -741,11 +739,19 @@ async def detect_deepfake(
     except Exception as exc:
         logger.warning(f"Celery unavailable, running deepfake detection synchronously: {exc}")
         task_id = str(uuid.uuid4())
-        try:
-            result_dict = _run_deepfake_sync(video_b64, current_user.id, heatmap)
-            _sync_task_cache[task_id] = {"status": "SUCCESS", "result": result_dict}
-        except Exception as sync_exc:
-            _sync_task_cache[task_id] = {"status": "FAILURE", "error": str(sync_exc)}
+        _sync_task_cache[task_id] = {"status": "PENDING"}
+
+        async def _run_df_bg(tid=task_id, vb=video_b64, uid=current_user.id):
+            import asyncio
+            loop = asyncio.get_event_loop()
+            try:
+                result_dict = await loop.run_in_executor(None, _run_deepfake_sync, vb, uid)
+                _sync_task_cache[tid] = {"status": "SUCCESS", "result": result_dict}
+            except Exception as e:
+                _sync_task_cache[tid] = {"status": "FAILURE", "error": str(e)}
+
+        import asyncio
+        asyncio.ensure_future(_run_df_bg())
 
     try:
         crud.create_audit_log(
@@ -788,11 +794,19 @@ async def detect_liveness(
     except Exception as exc:
         logger.warning(f"Celery unavailable, running liveness detection synchronously: {exc}")
         task_id = str(uuid.uuid4())
-        try:
-            result_dict = _run_liveness_sync(video_b64, current_user.id)
-            _sync_task_cache[task_id] = {"status": "SUCCESS", "result": result_dict}
-        except Exception as sync_exc:
-            _sync_task_cache[task_id] = {"status": "FAILURE", "error": str(sync_exc)}
+        _sync_task_cache[task_id] = {"status": "PENDING"}
+
+        async def _run_lv_bg(tid=task_id, vb=video_b64, uid=current_user.id):
+            import asyncio
+            loop = asyncio.get_event_loop()
+            try:
+                result_dict = await loop.run_in_executor(None, _run_liveness_sync, vb, uid)
+                _sync_task_cache[tid] = {"status": "SUCCESS", "result": result_dict}
+            except Exception as e:
+                _sync_task_cache[tid] = {"status": "FAILURE", "error": str(e)}
+
+        import asyncio
+        asyncio.ensure_future(_run_lv_bg())
 
     try:
         crud.create_audit_log(

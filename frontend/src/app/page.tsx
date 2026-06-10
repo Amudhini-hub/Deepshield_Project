@@ -485,13 +485,13 @@ export default function HomePage() {
             DeepShield shields your customers from deepfake attacks, replay attacks, and presentation fraud in real-time.
           </p>
           <div style={{ display: "flex", gap: "1rem", justifyContent: "center", flexWrap: "wrap" }}>
-            <Link href="/dashboard">
+            <Link href="/demo">
               <button
                 style={{ background: C.gold, color: "#fff", border: "none", padding: "0.875rem 2rem", borderRadius: 10, fontSize: 15, fontWeight: 600, cursor: "pointer" }}
                 onMouseOver={(e) => (e.currentTarget.style.background = C.goldHover)}
                 onMouseOut={(e) => (e.currentTarget.style.background = C.gold)}
               >
-                View Security Dashboard →
+                Try Live Demo →
               </button>
             </Link>
             <Link href="/integration">
